@@ -5,17 +5,19 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// A hitscan weapon system with fire-rate limiting, ammo management,
-/// and reload logic. Resolves damage through the IDamageable interface
-/// so it works with any damageable entity. Uses the New Input System
-/// (inline InputAction workflow).
+/// reload logic, and visual bullet trail feedback. Resolves damage
+/// through the IDamageable interface so it works with any damageable
+/// entity. Uses the New Input System (inline InputAction workflow).
 ///
 /// Setup:
 ///   1. Attach this script to the Player GameObject (alongside FirstPersonController).
 ///   2. Assign the child Camera to the 'shootOrigin' field in the Inspector.
-///   3. Tune all weapon stats in the Inspector.
-///   4. Ensure targets have a Collider and an IDamageable component (e.g. Health).
-///   5. (Optional) Wire the UnityEvents for HUD integration.
-///   6. Input actions are self-contained — no InputActions asset required.
+///   3. Create a child GameObject on your weapon model for 'gunBarrel' (muzzle point).
+///   4. Add a LineRenderer component for the bullet trail and assign it to 'bulletTrail'.
+///   5. Tune all weapon stats in the Inspector.
+///   6. Ensure targets have a Collider and an IDamageable component (e.g. Health).
+///   7. (Optional) Wire the UnityEvents for HUD integration.
+///   8. Input actions are self-contained — no InputActions asset required.
 /// </summary>
 public class RaycastShooter : MonoBehaviour
 {
@@ -51,6 +53,35 @@ public class RaycastShooter : MonoBehaviour
     [Header("References")]
     [SerializeField, Tooltip("The Camera transform from which the ray is cast (should be the player's FPS camera).")]
     private Transform shootOrigin;
+
+    // ──────────────────────────────────────────────
+    //  Visuals
+    // ──────────────────────────────────────────────
+    //
+    //  HOW THE BULLET TRAIL WORKS:
+    //  When the gun fires, we enable a LineRenderer for a brief flash
+    //  (0.05s by default). The line is drawn from the gun barrel (muzzle)
+    //  to the hit point (or max range on a miss). This creates the
+    //  appearance of a hitscan laser trace.
+    //
+    //  The trail starts and ends at two points:
+    //    Position 0 = gunBarrel.position    (where the shot visually exits)
+    //    Position 1 = hit.point or max range (where the shot lands)
+    //
+    //  A coroutine handles the flash timing — enable the renderer,
+    //  wait a tiny duration, then disable it. If the player fires
+    //  again before the flash ends, the coroutine restarts cleanly.
+    //
+
+    [Header("Visuals")]
+    [SerializeField, Tooltip("The muzzle point where the trail visually originates. If unassigned, falls back to shootOrigin.")]
+    private Transform gunBarrel;
+
+    [SerializeField, Tooltip("A LineRenderer used to draw the hitscan trail. Disable it by default in the Inspector.")]
+    private LineRenderer bulletTrail;
+
+    [SerializeField, Tooltip("How long the trail stays visible per shot (in seconds). Keep very short for a hitscan flash.")]
+    private float trailFlashDuration = 0.05f;
 
     // ──────────────────────────────────────────────
     //  Events (UnityEvent — for Inspector / HUD wiring)
@@ -108,6 +139,9 @@ public class RaycastShooter : MonoBehaviour
     /// <summary>Reference to the active reload coroutine (so we can cancel it).</summary>
     private Coroutine reloadCoroutine;
 
+    /// <summary>Reference to the active trail flash coroutine (so we can restart it).</summary>
+    private Coroutine trailCoroutine;
+
     // ──────────────────────────────────────────────
     //  Public Accessors
     // ──────────────────────────────────────────────
@@ -160,6 +194,18 @@ public class RaycastShooter : MonoBehaviour
         // Broadcast the initial ammo count so any connected HUD
         // shows the correct value from frame one.
         onAmmoChanged?.Invoke(currentAmmo, maxAmmo);
+
+        // Ensure the trail is hidden at startup.
+        if (bulletTrail != null)
+        {
+            bulletTrail.enabled = false;
+        }
+
+        // Fall back to shootOrigin if no gunBarrel was assigned.
+        if (gunBarrel == null)
+        {
+            gunBarrel = shootOrigin;
+        }
     }
 
     private void OnEnable()
@@ -254,11 +300,18 @@ public class RaycastShooter : MonoBehaviour
             {
                 target.TakeDamage(weaponDamage);
             }
+
+            // --- Visual trail (hit) ---
+            DrawTrail(hit.point);
         }
         else
         {
             // Draw a red ray to max range (miss).
             Debug.DrawRay(origin, direction * weaponRange, Color.red, debugRayDuration);
+
+            // --- Visual trail (miss) ---
+            // No hit, so the trail extends to max weapon range.
+            DrawTrail(origin + direction * weaponRange);
         }
     }
 
@@ -324,5 +377,50 @@ public class RaycastShooter : MonoBehaviour
         }
 
         isReloading = false;
+    }
+
+    // ──────────────────────────────────────────────
+    //  Bullet Trail
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Sets up the LineRenderer positions and triggers a brief flash
+    /// coroutine. If no LineRenderer is assigned, this method silently
+    /// skips (the weapon still functions, just without visuals).
+    /// </summary>
+    /// <param name="endPoint">World-space position where the trail terminates.</param>
+    private void DrawTrail(Vector3 endPoint)
+    {
+        if (bulletTrail == null || gunBarrel == null) return;
+
+        // Set the two endpoints of the line.
+        // Position 0 = muzzle (where the shot exits the barrel).
+        // Position 1 = impact point or max range.
+        bulletTrail.SetPosition(0, gunBarrel.position);
+        bulletTrail.SetPosition(1, endPoint);
+
+        // If a previous flash is still running, stop it first
+        // so we don't get overlapping enable/disable cycles.
+        if (trailCoroutine != null)
+        {
+            StopCoroutine(trailCoroutine);
+        }
+
+        trailCoroutine = StartCoroutine(TrailFlashCoroutine());
+    }
+
+    /// <summary>
+    /// Briefly enables the LineRenderer to create a hitscan "flash",
+    /// then disables it. The short duration (default 0.05s) makes the
+    /// trail appear and vanish almost instantly — like a real tracer.
+    /// </summary>
+    private IEnumerator TrailFlashCoroutine()
+    {
+        bulletTrail.enabled = true;
+
+        yield return new WaitForSeconds(trailFlashDuration);
+
+        bulletTrail.enabled = false;
+        trailCoroutine = null;
     }
 }
