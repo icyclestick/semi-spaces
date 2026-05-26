@@ -220,7 +220,12 @@ public class RaycastShooter : MonoBehaviour
 
     // ──────────────────────────────────────────────
     //  Lifecycle
-    // ──────────────────────────────────────────────
+    /// <summary>
+    /// Initializes runtime state for the weapon: fills the magazine, creates inline input actions for shooting and reloading, and constructs the hit-spark pool if a prefab is assigned.
+    /// </summary>
+    /// <remarks>
+    /// Sets CurrentAmmo to MaxAmmo. Creates a "Shoot" InputAction bound to Mouse left button and Gamepad right trigger, and a "Reload" InputAction bound to Keyboard R and Gamepad buttonWest. If <c>hitSparkPrefab</c> is not null, initializes an ObjectPool&lt;ParticleSystem&gt; using the configured pool sizes and callbacks; the weapon operates correctly without sparks when no prefab is provided.
+    /// </remarks>
 
     private void Awake()
     {
@@ -253,6 +258,12 @@ public class RaycastShooter : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Initializes runtime references and broadcasts initial ammo state when the component starts.
+    /// </summary>
+    /// <remarks>
+    /// If no <c>shootOrigin</c> is assigned, attempts to use a child <c>Camera</c> and logs an error if none is found. Invokes <c>onAmmoChanged</c> with the current and maximum ammo to update listeners, and assigns <c>gunBarrel</c> to <c>shootOrigin</c> if it was not set.
+    /// </remarks>
     private void Start()
     {
         // Auto-find the camera if none was assigned in the Inspector.
@@ -281,12 +292,21 @@ public class RaycastShooter : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Enables input actions used for shooting and reloading when the component becomes active.
+    /// </summary>
     private void OnEnable()
     {
         shootAction.Enable();
         reloadAction.Enable();
     }
 
+    /// <summary>
+    /// Disables shooting and reload input actions and cancels any active reload when the component is disabled.
+    /// </summary>
+    /// <remarks>
+    /// Prevents an in-progress reload coroutine from continuing after the weapon or component is disabled (for example during weapon swap or player death).
+    /// </remarks>
     private void OnDisable()
     {
         shootAction.Disable();
@@ -297,6 +317,9 @@ public class RaycastShooter : MonoBehaviour
         CancelReload();
     }
 
+    /// <summary>
+    /// Processes per-frame weapon logic: decrements the fire cooldown, handles manual reload input, and processes shooting input (including full-auto firing and auto-reload when empty).
+    /// </summary>
     private void Update()
     {
         // --- Fire rate cooldown ---
@@ -343,7 +366,12 @@ public class RaycastShooter : MonoBehaviour
     /// fire-rate timer, then fires 'pelletsPerShot' individual rays
     /// with randomized spread. Each pellet independently resolves
     /// damage through IDamageable.
+    /// <summary>
+    /// Fires the weapon: consumes one magazine round, resets the fire-rate cooldown, and performs per-pellet raycasts that apply damage and spawn impact/visual effects.
     /// </summary>
+    /// <remarks>
+    /// Returns immediately if the configured shoot origin is missing. Consumes exactly one ammo round per trigger pull, invokes the ammo-changed event, and for each pellet fires a ray from the shoot origin using the configured spread and range to resolve hits and visuals.
+    /// </remarks>
     private void Shoot()
     {
         if (shootOrigin == null) return;
@@ -376,7 +404,11 @@ public class RaycastShooter : MonoBehaviour
     /// damage through IDamageable, and spawns a visual trail.
     /// </summary>
     /// <param name="origin">World-space origin of the ray (camera position).</param>
-    /// <param name="direction">Direction this pellet travels (includes spread).</param>
+    /// <summary>
+    /// Casts a single pellet ray from the given origin along the specified direction, applies damage to a hit IDamageable, and spawns impact or miss visuals.
+    /// </summary>
+    /// <param name="origin">World-space start point for the raycast (typically the shoot origin or muzzle).</param>
+    /// <param name="direction">Normalized direction the pellet travels; may include spread and is used with the weapon's range.</param>
     private void FirePellet(Vector3 origin, Vector3 direction)
     {
         if (Physics.Raycast(origin, direction, out RaycastHit hit, weaponRange))
@@ -427,7 +459,11 @@ public class RaycastShooter : MonoBehaviour
     /// the cone. For spreadAngle = 0, the direction is exactly forward.
     /// </summary>
     /// <param name="forward">The base aim direction (camera forward).</param>
-    /// <returns>A direction vector randomised within the spread cone.</returns>
+    /// <summary>
+    /// Computes a randomized unit direction within the cone defined by <c>spreadAngle</c> around the given forward direction, using <c>shootOrigin</c>'s right and up axes as the cone basis.
+    /// </summary>
+    /// <param name="forward">Base forward direction to apply spread around.</param>
+    /// <returns>A normalized direction vector inside the spread cone centered on <paramref name="forward"/>.</returns>
     private Vector3 GetSpreadDirection(Vector3 forward)
     {
         // No spread — return the exact aim direction (rifle mode).
@@ -456,7 +492,12 @@ public class RaycastShooter : MonoBehaviour
     /// <summary>
     /// Initiates a reload if one isn't already in progress and the
     /// magazine isn't full. Starts the reload coroutine.
+    /// <summary>
+    /// Initiates a reload when not already reloading and the magazine is not full.
     /// </summary>
+    /// <remarks>
+    /// Starts the reload coroutine and stores its reference; has no effect if a reload is in progress or current ammo is greater than or equal to max ammo.
+    /// </remarks>
     private void StartReload()
     {
         if (isReloading) return;
@@ -475,7 +516,10 @@ public class RaycastShooter : MonoBehaviour
     ///   - The logic is sequential (start → wait → finish)
     ///   - It's self-cleaning (no leftover state if interrupted)
     ///   - It can be cancelled cleanly via StopCoroutine
+    /// <summary>
+    /// Performs the reload process, waiting for the configured reload duration and then refilling the magazine and raising reload events.
     /// </summary>
+    /// <returns>An IEnumerator that yields for the reload duration and completes after the magazine is refilled and reload events are invoked.</returns>
     private IEnumerator ReloadCoroutine()
     {
         isReloading = true;
@@ -501,6 +545,8 @@ public class RaycastShooter : MonoBehaviour
     /// <summary>
     /// Cancels any in-progress reload. Called when the weapon is
     /// disabled (weapon swap, death) to prevent ghost reloads.
+    /// <summary>
+    /// Cancels an in-progress reload, stops and clears the reload coroutine, and marks the weapon as not reloading.
     /// </summary>
     private void CancelReload()
     {
@@ -525,6 +571,9 @@ public class RaycastShooter : MonoBehaviour
     /// This replaces the old single-LineRenderer approach. Because each
     /// pellet gets its own trail object, shotguns (multi-pellet) and
     /// rapid-fire weapons work without any trail conflicts.
+    /// </summary>
+    /// <summary>
+    /// Spawns a temporary visual bullet trail from the gun barrel to the specified world-space endpoint.
     /// </summary>
     /// <param name="endPoint">World-space position where the trail terminates.</param>
     private void SpawnTrail(Vector3 endPoint)
@@ -580,7 +629,11 @@ public class RaycastShooter : MonoBehaviour
     /// If no prefab is assigned, this method silently skips.
     /// </summary>
     /// <param name="point">World-space position of the impact.</param>
-    /// <param name="normal">Surface normal at the impact point.</param>
+    /// <summary>
+    /// Spawns a pooled hit-spark particle system at the given impact position and orients it to the surface normal.
+    /// </summary>
+    /// <param name="point">World-space position of the impact.</param>
+    /// <param name="normal">Surface normal at the impact point used to orient the particle system.</param>
     private void SpawnHitSpark(Vector3 point, Vector3 normal)
     {
         if (sparkPool == null) return;
@@ -603,7 +656,10 @@ public class RaycastShooter : MonoBehaviour
     /// <summary>
     /// Called by the pool when it needs a NEW instance (pool is empty).
     /// Instantiates the prefab and wires up ReturnToPool.
+    /// <summary>
+    /// Instantiates the hit-spark prefab and ensures it is configured to return itself to the spark pool when finished.
     /// </summary>
+    /// <returns>The instantiated <see cref="ParticleSystem"/> with a <see cref="ReturnToPool"/> component whose Pool is set to the internal spark pool.</returns>
     private ParticleSystem CreateSpark()
     {
         ParticleSystem instance = Instantiate(hitSparkPrefab);
@@ -623,7 +679,10 @@ public class RaycastShooter : MonoBehaviour
     /// <summary>
     /// Called by the pool when Get() retrieves an existing instance.
     /// Activates the GameObject so it's visible and can play.
+    /// <summary>
+    /// Activates a pooled spark ParticleSystem's GameObject when the instance is retrieved from the pool.
     /// </summary>
+    /// <param name="spark">The pooled ParticleSystem instance to activate.</param>
     private void OnGetSpark(ParticleSystem spark)
     {
         spark.gameObject.SetActive(true);
@@ -632,7 +691,10 @@ public class RaycastShooter : MonoBehaviour
     /// <summary>
     /// Called by the pool when Release() returns an instance.
     /// Stops the particle and deactivates the GameObject.
+    /// <summary>
+    /// Stops the particle system and deactivates its GameObject when a spark is returned to the pool.
     /// </summary>
+    /// <param name="spark">The spark ParticleSystem being released back into the pool.</param>
     private void OnReleaseSpark(ParticleSystem spark)
     {
         spark.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -642,7 +704,10 @@ public class RaycastShooter : MonoBehaviour
     /// <summary>
     /// Called by the pool when an instance exceeds maxSize and must
     /// be permanently destroyed (overflow cleanup).
+    /// <summary>
+    /// Destroys the ParticleSystem's GameObject used for hit sparks.
     /// </summary>
+    /// <param name="spark">The pooled ParticleSystem instance to destroy.</param>
     private void OnDestroySpark(ParticleSystem spark)
     {
         Destroy(spark.gameObject);

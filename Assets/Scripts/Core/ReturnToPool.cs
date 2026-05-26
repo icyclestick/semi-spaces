@@ -32,6 +32,9 @@ public class ReturnToPool : MonoBehaviour
     /// <summary>Cached ParticleSystem reference.</summary>
     private ParticleSystem ps;
 
+    /// <summary>
+    /// Caches the ParticleSystem component attached to this GameObject for later use.
+    /// </summary>
     private void Awake()
     {
         ps = GetComponent<ParticleSystem>();
@@ -41,7 +44,12 @@ public class ReturnToPool : MonoBehaviour
     /// Called automatically by Unity when the ParticleSystem stops
     /// (requires "Stop Action" = "Callback" in the ParticleSystem's
     /// main module). Releases this object back to the pool.
+    /// <summary>
+    /// Handles the ParticleSystem stop callback by returning the particle instance to its owning pool or destroying the GameObject if no pool is assigned.
     /// </summary>
+    /// <remarks>
+    /// Invoked by Unity when the attached ParticleSystem stops (requires the ParticleSystem's Stop Action to be set to "Callback").
+    /// </remarks>
     private void OnParticleSystemStopped()
     {
         if (Pool != null)

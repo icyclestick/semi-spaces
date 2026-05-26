@@ -92,7 +92,13 @@ public class WeaponManager : MonoBehaviour
 
     // ──────────────────────────────────────────────
     //  Lifecycle
-    // ──────────────────────────────────────────────
+    /// <summary>
+    /// Discovers and caches this GameObject's direct child Transforms as weapons and constructs input actions.
+    /// </summary>
+    /// <remarks>
+    /// If no child Transforms are found, logs a warning and sets the internal weapon cache to an empty array.
+    /// After discovery, logs the found weapon names and calls BuildInputActions() to create the runtime input bindings.
+    /// </remarks>
 
     private void Awake()
     {
@@ -122,12 +128,21 @@ public class WeaponManager : MonoBehaviour
         BuildInputActions();
     }
 
+    /// <summary>
+    /// Equips the configured default weapon and disables all other weapons when the component starts.
+    /// </summary>
     private void Start()
     {
         // Equip the default weapon, disabling all others.
         SwitchWeapon(defaultWeaponIndex);
     }
 
+    /// <summary>
+    /// Enables the input actions used for weapon selection when this component becomes enabled.
+    /// </summary>
+    /// <remarks>
+    /// Enables the scroll action and each numbered key action if they have been created.
+    /// </remarks>
     private void OnEnable()
     {
         scrollAction?.Enable();
@@ -141,6 +156,9 @@ public class WeaponManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Disables the input actions used for weapon selection (scroll and number keys) if they exist.
+    /// </summary>
     private void OnDisable()
     {
         scrollAction?.Disable();
@@ -154,6 +172,12 @@ public class WeaponManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Processes input to change the active weapon: checks number key presses and scroll-wheel/d-pad input to switch weapons.
+    /// </summary>
+    /// <remarks>
+    /// If no weapons are present, the method does nothing.
+    /// </remarks>
     private void Update()
     {
         if (weapons == null || weapons.Length == 0) return;
@@ -169,7 +193,13 @@ public class WeaponManager : MonoBehaviour
     /// <summary>
     /// Creates inline InputActions for number keys (1–9, scaled to weapon
     /// count) and the scroll wheel. No .inputactions asset required.
+    /// <summary>
+    /// Creates and configures inline InputAction instances used for weapon selection.
     /// </summary>
+    /// <remarks>
+    /// Allocates and assigns <see cref="numberKeyActions"/> for keys 1..N (capped at 9) and binds each to the corresponding keyboard Alpha and numpad key.
+    /// Also creates and assigns <see cref="scrollAction"/> bound to mouse scroll Y and gamepad d-pad Y for cycling weapons.
+    /// </remarks>
     private void BuildInputActions()
     {
         // --- Number keys ---
@@ -206,6 +236,8 @@ public class WeaponManager : MonoBehaviour
     /// <summary>
     /// Checks if any number key (1–9) was pressed this frame and
     /// switches to the corresponding weapon.
+    /// <summary>
+    /// Checks configured number-key input actions and switches to the corresponding weapon for the first key pressed this frame.
     /// </summary>
     private void HandleNumberKeys()
     {
@@ -223,7 +255,12 @@ public class WeaponManager : MonoBehaviour
     /// Reads the scroll wheel delta and cycles weapons up or down.
     /// Scroll up = next weapon, scroll down = previous weapon.
     /// Wraps around at both ends.
+    /// <summary>
+    /// Reads the configured scroll input and cycles the active weapon forward or backward with wraparound.
     /// </summary>
+    /// <remarks>
+    /// If no scroll input action is configured, the method does nothing. Small scroll values with absolute magnitude less than 0.1 are ignored. A positive scroll advances to the next weapon; a negative scroll moves to the previous weapon; both directions wrap at the ends.
+    /// </remarks>
     private void HandleScrollWheel()
     {
         if (scrollAction == null) return;
@@ -258,6 +295,14 @@ public class WeaponManager : MonoBehaviour
     /// This is the single entry point for all weapon switches — number
     /// keys, scroll wheel, and external scripts all call this method.
     /// </summary>
+    /// <summary>
+    /// Equip the weapon at the specified zero-based child index, activating it and deactivating all other weapons.
+    /// </summary>
+    /// <remarks>
+    /// If <paramref name="index"/> is outside the valid range it will be clamped and a warning will be logged.
+    /// If the requested weapon is already active, the method does nothing. After a successful switch the internal
+    /// current index is updated and <c>onWeaponSwitched</c> is invoked with (newIndex, totalWeapons).
+    /// </remarks>
     /// <param name="index">Zero-based index of the weapon to equip.</param>
     public void SwitchWeapon(int index)
     {
