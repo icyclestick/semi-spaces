@@ -84,7 +84,14 @@ public abstract class EnemyBase : MonoBehaviour
     // ──────────────────────────────────────────────
 
     /// <summary>Reference to the Player's Transform. Found via tag on Awake.</summary>
-    protected Transform Player { get; private set; }
+    [SerializeField] private Transform player;
+
+    /// <summary>Public property for accessing the player Transform.</summary>
+    protected Transform Player
+    {
+        get => player;
+        protected set => player = value;
+    }
 
     /// <summary>
     /// True if the player is within detection range, inside the FOV
@@ -136,18 +143,32 @@ public abstract class EnemyBase : MonoBehaviour
         Agent.acceleration    = acceleration;
         Agent.stoppingDistance = stoppingDistance;
 
+        // --- Clamp perception tick rate to safe minimum ---
+        perceptionTickRate = Mathf.Max(perceptionTickRate, 0.05f);
+
         // --- Find the player ---
         // Uses the "Player" tag by convention. If your player doesn't
         // have this tag, assign it in the Inspector or override this.
-        GameObject playerObj = GameObject.FindWithTag("Player");
-        if (playerObj != null)
+        if (player == null)
         {
-            Player = playerObj.transform;
-        }
-        else
-        {
-            Debug.LogWarning($"[EnemyBase] '{gameObject.name}' could not find a GameObject " +
-                             "tagged 'Player'. Assign the tag or set Player manually.", this);
+            try
+            {
+                GameObject playerObj = GameObject.FindWithTag("Player");
+                if (playerObj != null)
+                {
+                    Player = playerObj.transform;
+                }
+                else
+                {
+                    Debug.LogWarning($"[EnemyBase] '{gameObject.name}' could not find a GameObject " +
+                                     "tagged 'Player'. Assign the tag or set Player manually.", this);
+                }
+            }
+            catch (UnityException ex)
+            {
+                Debug.LogWarning($"[EnemyBase] '{gameObject.name}' encountered an error finding the Player: {ex.Message}. " +
+                                 "Assign Player manually in the Inspector.", this);
+            }
         }
 
         // --- Subscribe to the Health death event ---
@@ -178,6 +199,16 @@ public abstract class EnemyBase : MonoBehaviour
         // --- Decision tick ---
         // Subclasses implement their AI algorithm here.
         OnThink();
+    }
+
+    /// <summary>
+    /// Validates Inspector values to ensure safe runtime behavior.
+    /// Called automatically when values are changed in the Inspector.
+    /// </summary>
+    protected virtual void OnValidate()
+    {
+        // Clamp perception tick rate to prevent per-frame checks
+        perceptionTickRate = Mathf.Max(perceptionTickRate, 0.05f);
     }
 
     /// <summary>
@@ -317,6 +348,8 @@ public abstract class EnemyBase : MonoBehaviour
     {
         if (!Agent.isOnNavMesh) return false;
         if (Agent.pathPending)  return false;
+        if (!Agent.hasPath)     return false;
+        if (Agent.pathStatus != NavMeshPathStatus.PathComplete) return false;
 
         return Agent.remainingDistance <= Agent.stoppingDistance;
     }
