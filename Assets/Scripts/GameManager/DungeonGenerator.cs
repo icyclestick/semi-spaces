@@ -1,22 +1,21 @@
 using UnityEngine;
 
 /// <summary>
-/// Procedurally generates a rectangular dungeon room from the DungeonKit
-/// modular pieces. Places corners at the four corners, walls along each
-/// edge, and a gate at the midpoint of each side.
+/// Builds a single rectangular dungeon room from the DungeonKit modular
+/// pieces: corners at the four corners, walls along each edge, a gate at
+/// the midpoint of each side, and corridors extending outward from gates.
+///
+/// Also serves as the building service for DungeonBuilder, which orchestrates
+/// multi-room dungeons by calling BuildRoom / BuildCorridor with computed
+/// origins.
 ///
 /// Setup:
-///   1. Create an empty "DungeonGenerator" GameObject in the scene.
-///   2. Attach this script.
-///   3. Drag template-corner, template-wall, and a gate variant (gate, gate-door,
-///      gate-door-window, or gate-metal-bars) from the DungeonKit folder into the
-///      Prefab fields in the Inspector.
-///   4. Set Tile Size to match the actual dimensions of the wall/corner pieces.
-///   5. Click "Generate Dungeon" in the context menu (⋮ → Generate Dungeon),
-///      or call Generate() from another script at runtime.
-///
-/// The generated room is parented under a "DungeonRoom" child GameObject so
-/// it's easy to delete and regenerate.
+///   1. Add this script to a GameObject.
+///   2. Drag template-corner, template-wall, gate, floor, corridor-wide,
+///      and corridor-wide-end from the DungeonKit folder into the Prefab slots.
+///   3. Set Tile Size to match the actual dimensions of the kit pieces.
+///   4. Click "Generate Dungeon" in the context menu for a single-room test,
+///      or use DungeonBuilder for multi-room generation.
 /// </summary>
 public class DungeonGenerator : MonoBehaviour
 {
@@ -37,6 +36,16 @@ public class DungeonGenerator : MonoBehaviour
 
     [SerializeField, Tooltip("The floor tile piece (template-floor.fbx).")]
     private GameObject floorPrefab;
+
+    [Header("Corridor")]
+    [SerializeField, Tooltip("The corridor segment piece (corridor-wide.fbx).")]
+    private GameObject corridorPrefab;
+
+    [SerializeField, Tooltip("The corridor end-cap piece (corridor-wide-end.fbx).")]
+    private GameObject corridorEndPrefab;
+
+    [SerializeField, Tooltip("How many corridor segments to place extending outward from each gate.")]
+    private int corridorLength = 3;
 
     [Header("Grid Settings")]
     [SerializeField, Tooltip("Tile size in world units. Must match the actual size " +
@@ -83,6 +92,12 @@ public class DungeonGenerator : MonoBehaviour
 
     private const string RoomParentName = "DungeonRoom";
 
+    /// <summary>Public accessor for tile size (used by DungeonBuilder for footprint checks).</summary>
+    public float TileSize => tileSize;
+
+    /// <summary>Public accessor for gate outward offset.</summary>
+    public float GateOutwardOffset => gateOutwardOffset;
+
     // ──────────────────────────────────────────────
     //  Public API
     // ──────────────────────────────────────────────
@@ -96,41 +111,60 @@ public class DungeonGenerator : MonoBehaviour
     {
         ValidateConfiguration();
 
-        // Set the random seed.
         Random.State previousState = Random.state;
         if (useRandomSeed)
-        {
             Random.InitState(System.Environment.TickCount);
-        }
         else
-        {
             Random.InitState(seed);
-        }
 
-        // Pick random odd grid dimensions so the gate lands exactly centered.
         int n = RandomOddInRange(minSize, maxSize);
         int m = RandomOddInRange(minSize, maxSize);
 
-        // Restore state so repeated calls from code don't cascade.
         Random.state = previousState;
 
-        BuildRoom(n, m);
+        GenerateRoomAndCorridors(n, m);
     }
 
     /// <summary>
     /// Destroys any previously generated room and builds a new one
     /// with the given exact dimensions.
     /// </summary>
-    /// <param name="width">Grid columns (n), must be ≥ 3.</param>
-    /// <param name="height">Grid rows (m), must be ≥ 3.</param>
     public void Generate(int width, int height)
     {
         ValidateConfiguration();
-
         if (width < 3) width = 3;
         if (height < 3) height = 3;
+        GenerateRoomAndCorridors(width, height);
+    }
 
-        BuildRoom(width, height);
+    /// <summary>
+    /// Tears down the old room, builds a fresh one at origin,
+    /// then extends corridors outward from each gate.
+    /// </summary>
+    private void GenerateRoomAndCorridors(int n, int m)
+    {
+        // --- Tear down any existing room ---
+        Transform existing = transform.Find(RoomParentName);
+        if (existing != null)
+            DestroyImmediate(existing.gameObject);
+
+        // --- Create fresh parent ---
+        GameObject room = new GameObject(RoomParentName);
+        room.transform.SetParent(transform, worldPositionStays: false);
+        room.transform.localPosition = Vector3.zero;
+        Transform roomT = room.transform;
+
+        // --- Build room + get gate data ---
+        GateInfo[] gates = BuildRoom(n, m, Vector3.zero, roomT);
+
+        // --- Build corridors (if prefabs are assigned) ---
+        if (corridorPrefab != null && corridorEndPrefab != null && corridorLength > 0)
+        {
+            foreach (GateInfo gate in gates)
+            {
+                BuildCorridor(gate.position, gate.direction, corridorLength, roomT);
+            }
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -181,92 +215,66 @@ public class DungeonGenerator : MonoBehaviour
     // ──────────────────────────────────────────────
 
     /// <summary>
-    /// Core generation routine. Destroys the old room, creates a fresh
-    /// parent, then places corners → walls → gates for an n×m grid.
+    /// Builds a room at the given origin under the given parent transform.
+    /// Returns the four gate positions + outward directions for corridor
+    /// attachment. Callers own tear-down and parent creation.
     /// </summary>
-    private void BuildRoom(int n, int m)
+    public GateInfo[] BuildRoom(int n, int m, Vector3 origin, Transform parent)
     {
-        // --- Tear down any existing room ---
-        Transform existing = transform.Find(RoomParentName);
-        if (existing != null)
-        {
-            DestroyImmediate(existing.gameObject);
-        }
-
-        // --- Create fresh parent ---
-        GameObject room = new GameObject(RoomParentName);
-        room.transform.SetParent(transform, worldPositionStays: false);
-        room.transform.localPosition = Vector3.zero;
-        Transform roomT = room.transform;
-
-        // --- Positions ---
-        // Grid origin is at world (0, 0, 0) under the room parent.
-        // X-axis = columns (n), Z-axis = rows (m).
-
+        float ox = origin.x;
+        float oz = origin.z;
         float maxX = (n - 1) * tileSize;
         float maxZ = (m - 1) * tileSize;
 
         // --- Corners ---
         //   Model faces -Z and +X by default.
-        //   SW at (0,    0   ): room inside is +X,+Z  → rotate Y 270°
-        //   SE at (maxX, 0   ): room inside is -X,+Z  → rotate Y 180°
-        //   NW at (0,    maxZ): room inside is +X,-Z  → rotate Y 0°
-        //   NE at (maxX, maxZ): room inside is -X,-Z  → rotate Y 90°
-        PlacePiece(cornerPrefab, roomT, 0, 0, 270f);  // SW
-        PlacePiece(cornerPrefab, roomT, maxX, 0, 180f);  // SE
-        PlacePiece(cornerPrefab, roomT, 0, maxZ, 0f);    // NW
-        PlacePiece(cornerPrefab, roomT, maxX, maxZ, 90f);   // NE
+        //   SW: room inside +X,+Z → 270°    SE: room inside -X,+Z → 180°
+        //   NW: room inside +X,-Z → 0°      NE: room inside -X,-Z → 90°
+        PlacePiece(cornerPrefab, parent, ox, oz, 270f);  // SW
+        PlacePiece(cornerPrefab, parent, ox + maxX, oz, 180f);  // SE
+        PlacePiece(cornerPrefab, parent, ox, oz + maxZ, 0f);    // NW
+        PlacePiece(cornerPrefab, parent, ox + maxX, oz + maxZ, 90f);   // NE
 
-        // --- Gate positions (computed first so walls skip them) ---
-        int midX = n / 2;  // integer division → center column
-        int midZ = m / 2;  // integer division → center row
-
+        int midX = n / 2;
+        int midZ = m / 2;
         float wallOut = wallOutwardOffset;
         float gateOut = gateOutwardOffset;
 
-        // --- Walls (pushed outward so the wall face sits on the boundary) ---
-        // Bottom edge (Z = -wallOut, X = 1..n-2)
-        // Top edge    (Z = maxZ + wallOut, X = 1..n-2)
-        // Left edge   (X = -wallOut, Z = 1..m-2)
-        // Right edge  (X = maxX + wallOut, Z = 1..m-2)
+        // --- Walls (pushed outward) ---
         for (int i = 1; i <= n - 2; i++)
         {
-            float x = i * tileSize;
+            float x = ox + i * tileSize;
             if (i != midX)
-                PlacePiece(wallPrefab, roomT, x, -wallOut, 180f);           // bottom (skip gate)
+                PlacePiece(wallPrefab, parent, x, oz - wallOut, 180f);  // bottom
             if (i != midX)
-                PlacePiece(wallPrefab, roomT, x, maxZ + wallOut, 0f);       // top (skip gate)
+                PlacePiece(wallPrefab, parent, x, oz + maxZ + wallOut, 0f);    // top
         }
         for (int j = 1; j <= m - 2; j++)
         {
-            float z = j * tileSize;
+            float z = oz + j * tileSize;
             if (j != midZ)
-                PlacePiece(wallPrefab, roomT, -wallOut, z, 270f);           // left (skip gate)
+                PlacePiece(wallPrefab, parent, ox - wallOut, z, 270f);  // left
             if (j != midZ)
-                PlacePiece(wallPrefab, roomT, maxX + wallOut, z, 90f);      // right (skip gate)
+                PlacePiece(wallPrefab, parent, ox + maxX + wallOut, z, 90f);   // right
         }
 
-        // --- Gates (pushed outward by gateOutwardOffset — less than walls) ---
-        PlacePiece(gatePrefab, roomT, midX * tileSize, -gateOut, 0f);            // bottom gate
-        PlacePiece(gatePrefab, roomT, midX * tileSize, maxZ + gateOut, 180f);     // top gate
-        PlacePiece(gatePrefab, roomT, -gateOut, midZ * tileSize, 270f);           // left gate
-        PlacePiece(gatePrefab, roomT, maxX + gateOut, midZ * tileSize, 90f);      // right gate
+        // --- Gates ---
+        PlacePiece(gatePrefab, parent, ox + midX * tileSize, oz - gateOut, 0f);    // bottom
+        PlacePiece(gatePrefab, parent, ox + midX * tileSize, oz + maxZ + gateOut, 180f);  // top
+        PlacePiece(gatePrefab, parent, ox - gateOut, oz + midZ * tileSize, 270f);  // left
+        PlacePiece(gatePrefab, parent, ox + maxX + gateOut, oz + midZ * tileSize, 90f);   // right
 
         // --- Floors (all grid cells except the 4 corners) ---
         for (int i = 0; i < n; i++)
         {
             for (int j = 0; j < m; j++)
             {
-                // Skip the four corners.
                 bool isCorner = (i == 0 && j == 0)
                              || (i == n - 1 && j == 0)
                              || (i == 0 && j == m - 1)
                              || (i == n - 1 && j == m - 1);
                 if (isCorner) continue;
-
-                float x = i * tileSize;
-                float z = j * tileSize;
-                PlacePiece(floorPrefab, roomT, x, z, 0f);
+                PlacePiece(floorPrefab, parent, ox + i * tileSize, oz + j * tileSize, 0f);
             }
         }
 
@@ -274,8 +282,66 @@ public class DungeonGenerator : MonoBehaviour
         lastWidth = n;
         lastHeight = m;
 
-        Debug.Log($"[DungeonGenerator] Generated {n}×{m} dungeon room " +
-                  $"(tile size: {tileSize}, world size: {maxX + tileSize}×{maxZ + tileSize}).", this);
+        Debug.Log($"[DungeonGenerator] Built {n}×{m} room at ({ox:F0}, {oz:F0}).", this);
+
+        // --- Return gate data for corridor attachment ---
+        return new GateInfo[]
+        {
+            new GateInfo { position = new Vector3(ox + midX * tileSize, 0, oz - gateOut),           direction = new Vector3(0, 0, -1) },
+            new GateInfo { position = new Vector3(ox + midX * tileSize, 0, oz + maxZ + gateOut),     direction = new Vector3(0, 0,  1) },
+            new GateInfo { position = new Vector3(ox - gateOut,          0, oz + midZ * tileSize),   direction = new Vector3(-1, 0, 0) },
+            new GateInfo { position = new Vector3(ox + maxX + gateOut,   0, oz + midZ * tileSize),   direction = new Vector3( 1, 0, 0) },
+        };
+    }
+
+    // ──────────────────────────────────────────────
+    //  Corridor Builder
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Places a straight corridor of <paramref name="length"/> segments
+    /// starting from <paramref name="startPos"/> and extending along
+    /// <paramref name="direction"/>, capped with an end piece.
+    /// </summary>
+    public void BuildCorridor(Vector3 startPos, Vector3 direction, int length, Transform parent)
+    {
+        if (corridorPrefab == null || corridorEndPrefab == null) return;
+
+        float rot = CorridorRotation(direction);
+
+        for (int i = 0; i < length; i++)
+        {
+            Vector3 pos = startPos + direction * ((i + 1) * tileSize);
+            PlacePiece(corridorPrefab, parent, pos.x, pos.z, rot);
+        }
+
+        Vector3 endPos = startPos + direction * ((length + 1) * tileSize);
+        PlacePiece(corridorEndPrefab, parent, endPos.x, endPos.z, rot);
+    }
+
+    /// <summary>
+    /// Converts an outward direction vector to the Y rotation needed
+    /// for corridor pieces to run along that axis.
+    /// </summary>
+    private float CorridorRotation(Vector3 direction)
+    {
+        if (direction.z < 0) return 90f;     // south
+        if (direction.z > 0) return 90f;   // north
+        if (direction.x < 0) return 0f;   // west
+        return 0f;                         // east
+    }
+
+    // ──────────────────────────────────────────────
+    //  Data
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Position and outward direction of a gate, used to attach corridors.
+    /// </summary>
+    public struct GateInfo
+    {
+        public Vector3 position;
+        public Vector3 direction;
     }
 
     // ──────────────────────────────────────────────
