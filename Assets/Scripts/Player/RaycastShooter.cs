@@ -687,10 +687,15 @@ public class RaycastShooter : MonoBehaviour
 
     /// <summary>
     /// Called by the pool when an instance exceeds maxSize and must
-    /// be permanently destroyed (overflow cleanup).
+    /// be permanently destroyed (overflow cleanup). Also called during
+    /// sparkPool.Clear() in OnDestroy — at that point, Unity may have
+    /// already destroyed some instances, so we null-check first.
     /// </summary>
     private void OnDestroySpark(ParticleSystem spark)
     {
-        Destroy(spark.gameObject);
+        if (spark != null)
+        {
+            Destroy(spark.gameObject);
+        }
     }
 }
