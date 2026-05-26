@@ -86,7 +86,7 @@ public class WeaponManager : MonoBehaviour
 
     /// <summary>The currently active weapon's GameObject (read-only).</summary>
     public GameObject ActiveWeapon =>
-        weapons != null && currentIndex < weapons.Length
+        weapons != null && currentIndex >= 0 && currentIndex < weapons.Length
             ? weapons[currentIndex].gameObject
             : null;
 
