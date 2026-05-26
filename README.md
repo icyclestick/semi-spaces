@@ -80,8 +80,8 @@ public interface IDamageable
 
 ```
   EnemyBase (abstract "body" — Aisaiah)
-  ├── Perception Layer: LOS, FOV cone, Last Known Position
-  ├── Execution Layer:  NavMeshAgent wrappers (MoveToTarget, StopNavigation)
+  ├── Perception Layer: LOS, FOV cone, Last Known Position (auto-updates)
+  ├── Execution Layer:  NavMeshAgent wrappers (PRIVATE agent, public wrappers)
   └── Health Lifecycle:  Auto-subscribes to Health.OnDeath, shuts down on kill
         │
         ├── SwarmAgent : EnemyBase      (Jen's "brain" — Boids algorithm)
@@ -94,46 +94,88 @@ public interface IDamageable
 > [!IMPORTANT]
 > **Jen and Ash: your scripts MUST extend `EnemyBase`.** Do not create standalone MonoBehaviours with your own NavMeshAgent or Health references. EnemyBase already handles all of that.
 
-### What EnemyBase Gives You (free, no code needed)
+> [!CAUTION]
+> **`Awake()`, `Update()`, and `OnDestroy()` are PRIVATE in EnemyBase.** You **cannot** override them. If you try, your code will silently run alongside the base — not replace it — and you'll get unpredictable bugs. Use the virtual hooks described below instead.
 
-| Feature | How to Use |
-|---|---|
-| `IsPlayerVisible` | Read this bool — perception updates automatically |
-| `LastKnownPosition` | The last place the player was seen (persists after LOS breaks) |
-| `HasDetectedPlayer` | True once the player has been spotted at least once |
-| `GetDistanceToPlayer()` | Returns float distance to the player |
-| `GetDirectionToPlayer()` | Returns normalized Vector3 toward the player |
-| `MoveToTarget(Vector3)` | Commands the NavMeshAgent to pathfind |
-| `StopNavigation()` | Halts the NavMeshAgent |
-| `SetSpeed(float)` / `ResetSpeed()` | Change movement speed contextually |
-| `HasReachedDestination()` | True when the agent arrives |
-| `IsDead` | True after the death sequence runs |
+### Your Hooks (override these)
 
-### What You Implement
+| Hook | Required? | When It Fires | Purpose |
+|---|---|---|---|
+| `OnInit()` | Optional | End of `Awake()`, after all base setup | One-time init: cache neighbours, register with managers |
+| `OnThink()` | **Yes** (abstract) | Every frame, after perception updates | Your AI algorithm (Boids / Utility scoring) |
+| `OnEnemyDeath()` | Optional | After death shutdown (NavMesh disabled) | Cleanup: stop coroutines, play death VFX |
+| `OnCleanup()` | Optional | `OnDestroy()`, after health unsubscribe | Final teardown: unsubscribe events, clear statics |
 
-| Method | Required? | Purpose |
+### Perception Data (read-only, auto-updated)
+
+| Property / Method | Type | Description |
 |---|---|---|
-| `OnThink()` | **Yes** (abstract) | Your AI algorithm — runs every frame after perception updates |
-| `OnEnemyDeath()` | Optional (virtual) | Cleanup — stop coroutines, disable VFX, play death animation |
+| `IsPlayerVisible` | `bool` | Player is in range + FOV + LOS |
+| `LastKnownPosition` | `Vector3` | Last seen position (persists after LOS break) |
+| `HasDetectedPlayer` | `bool` | True once the player has ever been spotted |
+| `GetDistanceToPlayer()` | `float` | Current distance to the player |
+| `GetDirectionToPlayer()` | `Vector3` | Normalized direction toward the player |
+| `Player` | `Transform` | The player's Transform reference |
+
+### Navigation Wrappers (the ONLY way to move)
+
+> [!WARNING]
+> **The `NavMeshAgent` is PRIVATE.** You cannot call `agent.SetDestination()`, `agent.speed`, or any NavMeshAgent method directly. Use the wrappers below. This is intentional — it keeps your decision logic decoupled from the execution layer.
+
+| Wrapper | Description |
+|---|---|
+| `MoveToTarget(Vector3)` | Pathfind to a world position |
+| `StopNavigation()` | Halt immediately |
+| `SetSpeed(float)` | Override movement speed |
+| `ResetSpeed()` | Restore Inspector-configured default speed |
+| `HasReachedDestination()` | True when the agent arrives at its destination |
+| `Velocity` (read-only) | Current NavMeshAgent velocity vector |
+| `RemainingDistance` (read-only) | Path distance remaining |
+| `IsOnNavMesh` (read-only) | Whether the agent is on a valid NavMesh |
+
+### Health Data (read-only)
+
+| Property | Description |
+|---|---|
+| `CurrentHealth` | Current HP (int) — useful for Duelist retreat thresholds |
+| `MaxHealth` | Max HP (int) |
+| `IsDead` | True after the death sequence runs |
 
 ### Minimal Example
 
 ```csharp
 public class SwarmAgent : EnemyBase
 {
+    // ✅ Use OnInit() instead of Awake()
+    protected override void OnInit()
+    {
+        // One-time setup after base is fully initialised.
+    }
+
+    // ✅ Use OnThink() instead of Update()
     protected override void OnThink()
     {
         if (!IsPlayerVisible) return;
 
-        // Your Boids algorithm here.
         Vector3 steering = CalculateBoids();
         MoveToTarget(transform.position + steering);
     }
 
+    // ✅ Use OnEnemyDeath() instead of OnDestroy()
     protected override void OnEnemyDeath()
     {
-        // Custom cleanup (e.g., notify swarm group).
+        // Cleanup: notify swarm group, play VFX.
     }
+}
+```
+
+```csharp
+// ❌ WRONG — these will NOT work as expected
+public class BrokenEnemy : EnemyBase
+{
+    private void Awake() { }      // ← HIDDEN, does not replace base Awake
+    private void Update() { }     // ← HIDDEN, does not replace base Update
+    private NavMeshAgent agent;   // ← REDUNDANT, base agent is private
 }
 ```
 
@@ -143,21 +185,23 @@ public class SwarmAgent : EnemyBase
 
 ### You MUST extend `EnemyBase`
 
-All enemy scripts **must** inherit from `EnemyBase`. Do not create standalone MonoBehaviours that duplicate navigation, perception, or health wiring. EnemyBase is the body — you write the brain.
+All enemy scripts **must** inherit from `EnemyBase`. Do not create standalone MonoBehaviours that duplicate navigation, perception, or health wiring. Starter stubs are provided:
+- `Assets/Scripts/AI/Swarm/SwarmAgent.cs` — Jen's starting point
+- `Assets/Scripts/AI/Duelist/DuelistBrain.cs` — Ash's starting point
 
-```csharp
-// ✅ CORRECT — extend EnemyBase
-public class SwarmAgent : EnemyBase
-{
-    protected override void OnThink() { /* Boids here */ }
-}
+### You MUST NOT override Unity lifecycle methods
 
-// ❌ WRONG — standalone script with its own NavMeshAgent
-public class SwarmAgent : MonoBehaviour
-{
-    private NavMeshAgent agent; // NO — EnemyBase already handles this
-}
-```
+`Awake()`, `Update()`, and `OnDestroy()` are **private** in EnemyBase. Use the hooks:
+
+| Instead of... | Use... |
+|---|---|
+| `Awake()` | `OnInit()` |
+| `Update()` | `OnThink()` |
+| `OnDestroy()` | `OnCleanup()` |
+
+### You MUST NOT access the NavMeshAgent directly
+
+The NavMeshAgent is **private** in EnemyBase. Use the wrapper methods (`MoveToTarget`, `StopNavigation`, `SetSpeed`, etc.). If you need velocity or distance data, use the read-only accessors (`Velocity`, `RemainingDistance`, `IsOnNavMesh`).
 
 ### You MUST use `Health.cs` for enemy health
 
@@ -200,11 +244,11 @@ if (targetHealth != null)
 Assets/Scripts/AI/
 ├── EnemyBase.cs        ← Aisaiah's domain (DO NOT MODIFY)
 ├── Swarm/              ← Jen's domain
-│   ├── SwarmAgent.cs   ← extends EnemyBase
+│   ├── SwarmAgent.cs   ← extends EnemyBase (starter stub provided)
 │   ├── SwarmFormation.cs
 │   └── ...
 └── Duelist/            ← Ash's domain
-    ├── DuelistBrain.cs ← extends EnemyBase
+    ├── DuelistBrain.cs ← extends EnemyBase (starter stub provided)
     ├── DuelistCombat.cs
     └── ...
 ```
