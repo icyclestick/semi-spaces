@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -36,27 +37,62 @@ using UnityEngine;
 ///   CurrentHealth (int), MaxHealth (int), IsDead (bool).
 ///
 /// Setup:
-///   1. Create Swarm drone prefab with NavMeshAgent + Health.
+///   1. Create Swarm drone prefab with NavMeshAgent + Health + SwarmAttack.
 ///   2. Attach this script.
 ///   3. Configure perception (detectionRange, FOV) and navigation
 ///      (speed, acceleration) on the EnemyBase fields in the Inspector.
 ///   4. Set Health.maxHealth to a low value (Swarm drones are fragile).
+///   5. Tune Boids weights and radii below to taste.
 /// </summary>
 public class SwarmAgent : EnemyBase
 {
     // ──────────────────────────────────────────────
-    //  Swarm Configuration
+    //  Boids Configuration
     // ──────────────────────────────────────────────
 
-    // TODO (Jen): Add your Boids tuning variables here.
-    // Example fields you'll likely need:
-    //
-    // [Header("Boids")]
-    // [SerializeField] private float separationWeight = 1.5f;
-    // [SerializeField] private float alignmentWeight  = 1.0f;
-    // [SerializeField] private float cohesionWeight    = 1.0f;
-    // [SerializeField] private float pursuitWeight     = 2.0f;
-    // [SerializeField] private float neighborRadius    = 5f;
+    [Header("Boids — Weights")]
+    [SerializeField, Tooltip("How strongly drones repel nearby neighbours.")]
+    private float separationWeight = 1.5f;
+
+    [SerializeField, Tooltip("How strongly drones match neighbour headings.")]
+    private float alignmentWeight = 1.0f;
+
+    [SerializeField, Tooltip("How strongly drones steer toward the group center.")]
+    private float cohesionWeight = 1.0f;
+
+    [SerializeField, Tooltip("How strongly drones pursue the player.")]
+    private float pursuitWeight = 2.0f;
+
+    [Header("Boids — Radii")]
+    [SerializeField, Tooltip("Radius for finding Boids neighbours (alignment & cohesion).")]
+    private float neighborRadius = 8f;
+
+    [SerializeField, Tooltip("Inner radius for strong separation repulsion. " +
+        "Should be smaller than neighborRadius.")]
+    private float separationRadius = 3f;
+
+    [Header("Boids — Limits")]
+    [SerializeField, Tooltip("Maximum magnitude of the combined steering vector.")]
+    private float maxSteerForce = 10f;
+
+    [SerializeField, Tooltip("How far ahead to project the steering target. " +
+        "Higher values make movement smoother but less responsive.")]
+    private float steerTargetDistance = 5f;
+
+    // ──────────────────────────────────────────────
+    //  Attack Configuration
+    // ──────────────────────────────────────────────
+
+    [Header("Attack")]
+    [SerializeField, Tooltip("Distance at which the drone can hit the player.")]
+    private float attackRange = 2.5f;
+
+    // ──────────────────────────────────────────────
+    //  Cached References
+    // ──────────────────────────────────────────────
+
+    /// <summary>Sibling attack component for dealing damage.</summary>
+    private SwarmAttack swarmAttack;
 
     // ──────────────────────────────────────────────
     //  Lifecycle Hooks
@@ -65,82 +101,244 @@ public class SwarmAgent : EnemyBase
     /// <summary>
     /// Called once after EnemyBase has finished all its initialisation
     /// (NavMeshAgent configured, player found, death event subscribed).
-    /// Use this for one-time Swarm setup.
+    /// Registers with SwarmFormation and caches the attack component.
     /// </summary>
     protected override void OnInit()
     {
-        // TODO (Jen): One-time setup here.
-        // Example: find nearby SwarmAgents, cache references,
-        // register with a SwarmFormation manager, etc.
+        // Register with the centralised formation manager.
+        SwarmFormation.Instance.Register(this);
+
+        // Cache the sibling attack component.
+        swarmAttack = GetComponent<SwarmAttack>();
+        if (swarmAttack == null)
+        {
+            Debug.LogWarning($"[SwarmAgent] '{gameObject.name}' is missing a SwarmAttack " +
+                             "component. Attacks will be disabled.", this);
+        }
     }
 
     /// <summary>
     /// Called every frame after the perception system has updated
-    /// IsPlayerVisible, LastKnownPosition, etc. This is where
-    /// the Boids algorithm runs.
-    ///
-    /// Available perception data you can read:
-    ///   IsPlayerVisible      — true if player is in range + FOV + LOS
-    ///   LastKnownPosition    — last place the player was seen
-    ///   HasDetectedPlayer    — true if player has ever been spotted
-    ///   GetDistanceToPlayer()— current distance to the player
-    ///   GetDirectionToPlayer() — normalized direction to the player
-    ///   Player               — the player's Transform
-    ///
-    /// Available navigation commands:
-    ///   MoveToTarget(Vector3) — pathfind to a position
-    ///   StopNavigation()      — halt immediately
-    ///   SetSpeed(float)       — change movement speed
-    ///   Velocity              — current NavMeshAgent velocity (read-only)
+    /// IsPlayerVisible, LastKnownPosition, etc. Runs the Boids
+    /// algorithm and triggers attacks when in range.
     /// </summary>
     protected override void OnThink()
     {
-        // TODO (Jen): Implement your Boids algorithm here.
-        //
-        // Pseudocode:
-        //   1. Find all SwarmAgent neighbours within neighborRadius.
-        //   2. Calculate separation vector (steer away from nearby drones).
-        //   3. Calculate alignment vector (match heading of nearby drones).
-        //   4. Calculate cohesion vector (steer toward group center).
-        //   5. Calculate pursuit vector (steer toward predicted player position).
-        //   6. Combine: steering = sep * w1 + align * w2 + cohesion * w3 + pursuit * w4
-        //   7. MoveToTarget(transform.position + steering);
-        //
-        // Example skeleton:
-        //
-        // if (!HasDetectedPlayer) return; // Idle until player is spotted.
-        //
-        // Vector3 separation = CalculateSeparation();
-        // Vector3 alignment  = CalculateAlignment();
-        // Vector3 cohesion   = CalculateCohesion();
-        // Vector3 pursuit    = CalculatePursuit();
-        //
-        // Vector3 steering = separation * separationWeight
-        //                   + alignment * alignmentWeight
-        //                   + cohesion  * cohesionWeight
-        //                   + pursuit   * pursuitWeight;
-        //
-        // MoveToTarget(transform.position + steering.normalized * 5f);
+        // Idle until the player has been spotted at least once.
+        if (!HasDetectedPlayer) return;
+
+        // --- Gather neighbours ---
+        List<SwarmAgent> neighbours = SwarmFormation.Instance.GetNeighbours(this, neighborRadius);
+
+        // --- Calculate Boids steering forces ---
+        Vector3 separation = CalculateSeparation(neighbours);
+        Vector3 alignment  = CalculateAlignment(neighbours);
+        Vector3 cohesion   = CalculateCohesion(neighbours);
+        Vector3 pursuit    = CalculatePursuit();
+
+        // --- Combine weighted forces ---
+        Vector3 steering = separation * separationWeight
+                         + alignment  * alignmentWeight
+                         + cohesion   * cohesionWeight
+                         + pursuit    * pursuitWeight;
+
+        // Clamp to maximum steering force.
+        if (steering.sqrMagnitude > maxSteerForce * maxSteerForce)
+        {
+            steering = steering.normalized * maxSteerForce;
+        }
+
+        // --- Execute movement through EnemyBase wrapper ---
+        // Only issue a move command when steering has meaningful magnitude.
+        // Normalising a near-zero vector would amplify tiny residual forces
+        // into full-speed jitter when the drone is already well-positioned.
+        const float kMinSteerSqr = 0.01f;
+        if (steering.sqrMagnitude > kMinSteerSqr)
+        {
+            Vector3 targetPosition = transform.position + steering.normalized * steerTargetDistance;
+            MoveToTarget(targetPosition);
+        }
+
+        // --- Attack if in range and player is visible ---
+        TryAttackPlayer();
     }
 
     /// <summary>
     /// Called once when this drone is killed. Navigation is already
-    /// disabled by the time this runs. Use for Swarm-specific cleanup.
+    /// disabled by the time this runs. Unregisters from SwarmFormation.
     /// </summary>
     protected override void OnEnemyDeath()
     {
-        // TODO (Jen): Cleanup here.
-        // Example: notify SwarmFormation that this drone died,
-        // play a death VFX, remove from neighbour lists, etc.
+        // Guard: only unregister if the formation singleton still exists.
+        // Avoids creating a new GameObject during scene teardown.
+        if (SwarmFormation.HasInstance)
+        {
+            SwarmFormation.Instance.Unregister(this);
+        }
     }
 
     /// <summary>
     /// Called on destruction after base cleanup (health events
-    /// unsubscribed). Use for final teardown if needed.
+    /// unsubscribed). Safety unregister in case death didn't fire.
     /// </summary>
     protected override void OnCleanup()
     {
-        // TODO (Jen): Final teardown here if needed.
-        // Example: unsubscribe from static events, clear cached lists.
+        // Guard: only unregister if the formation singleton still exists.
+        // During scene teardown, the SwarmFormation may have already been
+        // destroyed. Calling Instance here would auto-create a new
+        // GameObject mid-teardown, causing Unity warnings.
+        if (SwarmFormation.HasInstance)
+        {
+            SwarmFormation.Instance.Unregister(this);
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    //  Boids — Separation
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Steers away from neighbours that are too close (within
+    /// separationRadius). Uses inverse-distance weighting so
+    /// closer drones exert stronger repulsion.
+    /// </summary>
+    private Vector3 CalculateSeparation(List<SwarmAgent> neighbours)
+    {
+        Vector3 force = Vector3.zero;
+        int count = 0;
+
+        float separationRadiusSqr = separationRadius * separationRadius;
+
+        for (int i = 0; i < neighbours.Count; i++)
+        {
+            // Guard: neighbour may have been destroyed mid-frame.
+            if (neighbours[i] == null) continue;
+
+            Vector3 offset = transform.position - neighbours[i].transform.position;
+            float distSqr = offset.sqrMagnitude;
+
+            if (distSqr < separationRadiusSqr && distSqr > 0.001f)
+            {
+                // Inverse-distance weighting: closer = stronger push.
+                float dist = Mathf.Sqrt(distSqr);
+                force += offset.normalized / dist;
+                count++;
+            }
+        }
+
+        if (count > 0)
+        {
+            force /= count;
+        }
+
+        return force;
+    }
+
+    // ──────────────────────────────────────────────
+    //  Boids — Alignment
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Steers toward the average velocity heading of nearby neighbours.
+    /// Uses the Velocity property from EnemyBase (read-only NavMeshAgent
+    /// velocity accessor).
+    /// </summary>
+    private Vector3 CalculateAlignment(List<SwarmAgent> neighbours)
+    {
+        if (neighbours.Count == 0) return Vector3.zero;
+
+        Vector3 averageVelocity = Vector3.zero;
+
+        for (int i = 0; i < neighbours.Count; i++)
+        {
+            // Guard: neighbour may have been destroyed mid-frame.
+            if (neighbours[i] == null) continue;
+            averageVelocity += neighbours[i].Velocity;
+        }
+
+        averageVelocity /= neighbours.Count;
+
+        // Return the desired steering adjustment (difference from our velocity).
+        return averageVelocity - Velocity;
+    }
+
+    // ──────────────────────────────────────────────
+    //  Boids — Cohesion
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Steers toward the centroid (average position) of nearby
+    /// neighbours, pulling the drone toward the group center.
+    /// </summary>
+    private Vector3 CalculateCohesion(List<SwarmAgent> neighbours)
+    {
+        if (neighbours.Count == 0) return Vector3.zero;
+
+        Vector3 centroid = Vector3.zero;
+
+        for (int i = 0; i < neighbours.Count; i++)
+        {
+            // Guard: neighbour may have been destroyed mid-frame.
+            if (neighbours[i] == null) continue;
+            centroid += neighbours[i].transform.position;
+        }
+
+        centroid /= neighbours.Count;
+
+        // Steer toward the centroid.
+        return (centroid - transform.position).normalized;
+    }
+
+    // ──────────────────────────────────────────────
+    //  Boids — Pursuit
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Steers toward the player's current position when visible, or
+    /// toward the LastKnownPosition when line-of-sight is broken.
+    /// This gives drones a "search" behavior after losing sight.
+    /// </summary>
+    private Vector3 CalculatePursuit()
+    {
+        Vector3 targetPosition;
+
+        if (IsPlayerVisible && Player != null)
+        {
+            // Steer directly toward the player's current position.
+            targetPosition = Player.position;
+        }
+        else
+        {
+            // Player not visible — head to last known position.
+            targetPosition = LastKnownPosition;
+        }
+
+        Vector3 toTarget = targetPosition - transform.position;
+
+        // Avoid zero-length vectors when already at the target.
+        if (toTarget.sqrMagnitude < 0.01f) return Vector3.zero;
+
+        return toTarget.normalized;
+    }
+
+    // ──────────────────────────────────────────────
+    //  Attack
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Checks if the player is within attack range and visible, then
+    /// delegates to SwarmAttack to deal damage through IDamageable.
+    /// </summary>
+    private void TryAttackPlayer()
+    {
+        if (swarmAttack == null) return;
+        if (!IsPlayerVisible) return;
+        if (Player == null) return;
+
+        float distance = GetDistanceToPlayer();
+        if (distance <= attackRange)
+        {
+            swarmAttack.TryAttack(Player.gameObject);
+        }
     }
 }
