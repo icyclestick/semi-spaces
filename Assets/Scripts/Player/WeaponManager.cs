@@ -154,6 +154,25 @@ public class WeaponManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Disposes all inline InputActions on destruction to prevent
+    /// native memory leaks. Matches the pattern in RaycastShooter.
+    /// </summary>
+    private void OnDestroy()
+    {
+        scrollAction?.Dispose();
+        scrollAction = null;
+
+        if (numberKeyActions != null)
+        {
+            for (int i = 0; i < numberKeyActions.Length; i++)
+            {
+                numberKeyActions[i]?.Dispose();
+            }
+            numberKeyActions = null;
+        }
+    }
+
     private void Update()
     {
         if (weapons == null || weapons.Length == 0) return;
