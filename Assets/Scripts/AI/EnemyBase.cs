@@ -16,6 +16,15 @@ using UnityEngine.AI;
 /// Architecture Layers NOT Handled (subclass responsibility):
 ///   DECISION     — Boids steering (Swarm), Utility scoring (Duelist).
 ///
+/// Design Decisions:
+///   - NavMeshAgent is PRIVATE. Subclasses use wrappers (MoveToTarget,
+///     StopNavigation, etc.) to prevent bypassing the execution layer.
+///   - Awake/Update/OnDestroy are PRIVATE. Subclasses override virtual
+///     hooks (OnInit, OnTick) so missing base calls can never silently
+///     break component caching, perception, or death subscriptions.
+///   - Perception uses sqrMagnitude and Dot instead of magnitude and
+///     Vector3.Angle to minimize per-frame cost with 20+ Swarm drones.
+///
 /// Setup:
 ///   1. Create your enemy prefab with a NavMeshAgent and Health component.
 ///   2. Attach a subclass of EnemyBase (e.g., SwarmAgent) — NOT this
@@ -24,12 +33,13 @@ using UnityEngine.AI;
 ///   4. Tag the Player GameObject as "Player" (or assign manually).
 ///   5. Set up LayerMasks for line-of-sight raycasting in the Inspector.
 ///
-/// For AI developers (Jen & Ash):
+/// For AI developers (Jen &amp; Ash):
 ///   Override OnThink() for your decision logic.
 ///   Override OnEnemyDeath() for cleanup.
+///   Override OnInit() if you need one-time setup after base initialization.
 ///   Use the perception data (IsPlayerVisible, LastKnownPosition) and
 ///   navigation wrappers (MoveToTarget, StopNavigation) — do NOT
-///   access the NavMeshAgent directly.
+///   access the NavMeshAgent directly (it's private).
 /// </summary>
 [RequireComponent(typeof(NavMeshAgent))]
 [RequireComponent(typeof(Health))]
@@ -70,14 +80,19 @@ public abstract class EnemyBase : MonoBehaviour
     private float stoppingDistance = 1f;
 
     // ──────────────────────────────────────────────
-    //  Cached Components
+    //  Cached Components (PRIVATE — use wrappers)
     // ──────────────────────────────────────────────
 
-    /// <summary>The NavMeshAgent driving pathfinding for this enemy.</summary>
-    protected NavMeshAgent Agent { get; private set; }
+    /// <summary>
+    /// The NavMeshAgent driving pathfinding for this enemy.
+    /// PRIVATE — subclasses must use the navigation wrappers
+    /// (MoveToTarget, StopNavigation, etc.) instead of accessing
+    /// this directly. This enforces the execution layer boundary.
+    /// </summary>
+    private NavMeshAgent agent;
 
     /// <summary>The Health component handling damage and death.</summary>
-    protected Health Health { get; private set; }
+    private Health health;
 
     // ──────────────────────────────────────────────
     //  Perception State (read by subclasses)
@@ -90,7 +105,7 @@ public abstract class EnemyBase : MonoBehaviour
     protected Transform Player
     {
         get => player;
-        protected set => player = value;
+        private set => player = value;
     }
 
     /// <summary>
@@ -117,6 +132,41 @@ public abstract class EnemyBase : MonoBehaviour
     public bool IsDead { get; private set; }
 
     // ──────────────────────────────────────────────
+    //  Navigation Accessors (read-only for subclasses)
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// The NavMeshAgent's current velocity vector (read-only).
+    /// Useful for Boids alignment and predictive steering.
+    /// </summary>
+    protected Vector3 Velocity => agent != null ? agent.velocity : Vector3.zero;
+
+    /// <summary>
+    /// Remaining path distance to the current destination (read-only).
+    /// Returns float.MaxValue if the agent has no path.
+    /// </summary>
+    protected float RemainingDistance =>
+        agent != null && agent.isOnNavMesh && agent.hasPath
+            ? agent.remainingDistance
+            : float.MaxValue;
+
+    /// <summary>
+    /// True if the NavMeshAgent is currently on a NavMesh (read-only).
+    /// </summary>
+    protected bool IsOnNavMesh => agent != null && agent.isOnNavMesh;
+
+    /// <summary>
+    /// The Health component's current health (read-only convenience).
+    /// Useful for Duelist utility scoring (health-based retreat logic).
+    /// </summary>
+    protected int CurrentHealth => health != null ? health.CurrentHealth : 0;
+
+    /// <summary>
+    /// The Health component's max health (read-only convenience).
+    /// </summary>
+    protected int MaxHealth => health != null ? health.MaxHealth : 0;
+
+    // ──────────────────────────────────────────────
     //  Internal State
     // ──────────────────────────────────────────────
 
@@ -127,38 +177,59 @@ public abstract class EnemyBase : MonoBehaviour
     /// </summary>
     private float perceptionTimer;
 
+    /// <summary>
+    /// Precomputed squared detection range. Avoids a sqrt per perception
+    /// tick by comparing sqrMagnitude directly.
+    /// </summary>
+    private float detectionRangeSqr;
+
+    /// <summary>
+    /// Precomputed dot product threshold for the FOV cone check.
+    /// cos(fieldOfViewAngle) — avoids Acos per tick by comparing
+    /// a dot product directly.
+    /// </summary>
+    private float fovDotThreshold;
+
     // ──────────────────────────────────────────────
-    //  Lifecycle
+    //  Lifecycle (PRIVATE — subclasses use hooks)
     // ──────────────────────────────────────────────
+    //
+    //  Awake, Update, and OnDestroy are intentionally NOT virtual.
+    //  If a subclass overrides them, they can't accidentally skip
+    //  component caching, perception ticks, or death cleanup.
+    //
+    //  Instead, subclasses override:
+    //    OnInit()        — called at the end of Awake
+    //    OnThink()       — called every frame after perception
+    //    OnEnemyDeath()  — called after the death shutdown
+    //
 
     /// <summary>
     /// Caches components, finds the player, configures the NavMeshAgent,
-    /// and subscribes to the Health death event. Subclasses that override
-    /// Awake MUST call base.Awake().
+    /// precomputes perception thresholds, subscribes to death events,
+    /// and calls the OnInit() hook for subclass setup.
     /// </summary>
-    protected virtual void Awake()
+    private void Awake()
     {
         // --- Cache required components ---
-        Agent  = GetComponent<NavMeshAgent>();
-        Health = GetComponent<Health>();
+        agent  = GetComponent<NavMeshAgent>();
+        health = GetComponent<Health>();
 
         // --- Configure NavMeshAgent defaults ---
-        Agent.speed           = defaultSpeed;
-        Agent.acceleration    = acceleration;
-        Agent.stoppingDistance = stoppingDistance;
+        agent.speed           = defaultSpeed;
+        agent.acceleration    = acceleration;
+        agent.stoppingDistance = stoppingDistance;
 
-        // --- Clamp perception tick rate to safe minimum ---
+        // --- Clamp and precompute perception values ---
         perceptionTickRate = Mathf.Max(perceptionTickRate, 0.05f);
+        CachePerceptionThresholds();
 
         // --- Stagger perception start ---
         // Randomise the initial timer so enemies spawned on the same
         // frame don't all fire UpdatePerception() simultaneously.
-        // Each enemy's first perception tick lands on a different frame.
         perceptionTimer = Random.Range(0f, perceptionTickRate);
 
         // --- Find the player ---
-        // Uses the "Player" tag by convention. If your player doesn't
-        // have this tag, assign it in the Inspector or override this.
         if (player == null)
         {
             try
@@ -182,23 +253,21 @@ public abstract class EnemyBase : MonoBehaviour
         }
 
         // --- Subscribe to the Health death event ---
-        // When Health.cs fires OnDeath, our HandleDeath method runs,
-        // which shuts down navigation and notifies the subclass.
-        Health.OnDeath += HandleDeath;
+        health.OnDeath += HandleDeath;
+
+        // --- Subclass initialisation hook ---
+        OnInit();
     }
 
     /// <summary>
     /// Runs perception updates on a throttled timer and calls the
-    /// subclass decision method. Subclasses that override Update
-    /// MUST call base.Update().
+    /// subclass decision method via OnThink().
     /// </summary>
-    protected virtual void Update()
+    private void Update()
     {
         if (IsDead) return;
 
         // --- Throttled perception ---
-        // We don't need to raycast every single frame. The tick rate
-        // controls how often LOS checks run (default: ~7 times/sec).
         perceptionTimer -= Time.deltaTime;
         if (perceptionTimer <= 0f)
         {
@@ -207,7 +276,6 @@ public abstract class EnemyBase : MonoBehaviour
         }
 
         // --- Decision tick ---
-        // Subclasses implement their AI algorithm here.
         OnThink();
     }
 
@@ -215,22 +283,24 @@ public abstract class EnemyBase : MonoBehaviour
     /// Validates Inspector values to ensure safe runtime behavior.
     /// Called automatically when values are changed in the Inspector.
     /// </summary>
-    protected virtual void OnValidate()
+    private void OnValidate()
     {
-        // Clamp perception tick rate to prevent per-frame checks
         perceptionTickRate = Mathf.Max(perceptionTickRate, 0.05f);
+        CachePerceptionThresholds();
     }
 
     /// <summary>
     /// Unsubscribes from the Health death event to prevent leaks.
-    /// Subclasses that override OnDestroy MUST call base.OnDestroy().
+    /// Calls OnCleanup() hook for subclass teardown.
     /// </summary>
-    protected virtual void OnDestroy()
+    private void OnDestroy()
     {
-        if (Health != null)
+        if (health != null)
         {
-            Health.OnDeath -= HandleDeath;
+            health.OnDeath -= HandleDeath;
         }
+
+        OnCleanup();
     }
 
     // ──────────────────────────────────────────────
@@ -238,10 +308,22 @@ public abstract class EnemyBase : MonoBehaviour
     // ──────────────────────────────────────────────
 
     /// <summary>
-    /// Performs the full perception pipeline:
-    ///   1. Range check — is the player within detection range?
-    ///   2. FOV check  — is the player inside the vision cone?
-    ///   3. LOS check  — is the line-of-sight unobstructed?
+    /// Precomputes squared range and FOV dot threshold so the per-tick
+    /// perception check avoids expensive sqrt and Acos operations.
+    /// Called once in Awake and again from OnValidate when Inspector
+    /// values change.
+    /// </summary>
+    private void CachePerceptionThresholds()
+    {
+        detectionRangeSqr = detectionRange * detectionRange;
+        fovDotThreshold   = Mathf.Cos(fieldOfViewAngle * Mathf.Deg2Rad);
+    }
+
+    /// <summary>
+    /// Performs the full perception pipeline using optimised math:
+    ///   1. Range check — sqrMagnitude vs detectionRange² (no sqrt).
+    ///   2. FOV check  — Dot product vs cos(fieldOfViewAngle) (no Acos).
+    ///   3. LOS check  — Raycast for obstacle occlusion.
     ///
     /// If all three pass, the player is visible and the Last Known
     /// Position is updated. If any fail, IsPlayerVisible is set to
@@ -256,36 +338,36 @@ public abstract class EnemyBase : MonoBehaviour
         }
 
         Vector3 toPlayer = Player.position - transform.position;
-        float   distance = toPlayer.magnitude;
+        float   distSqr  = toPlayer.sqrMagnitude;
 
-        // --- Range check ---
-        if (distance > detectionRange)
+        // --- Range check (no sqrt) ---
+        if (distSqr > detectionRangeSqr)
         {
             IsPlayerVisible = false;
             return;
         }
 
-        // --- FOV check ---
-        // Calculate the angle between our forward vector and the
-        // direction to the player. If it exceeds the half-angle,
-        // the player is outside our vision cone.
-        float angle = Vector3.Angle(transform.forward, toPlayer);
-        if (angle > fieldOfViewAngle)
+        // --- FOV check (dot product, no Acos) ---
+        // Normalise the direction vector, then compare its dot product
+        // with forward against the precomputed cosine threshold.
+        // Dot > threshold means the angle is within the FOV cone.
+        float distance = Mathf.Sqrt(distSqr); // Need actual distance for the raycast below.
+        Vector3 dirToPlayer = toPlayer / distance; // Manual normalise (reuse the sqrt).
+
+        float dot = Vector3.Dot(transform.forward, dirToPlayer);
+        if (dot < fovDotThreshold)
         {
             IsPlayerVisible = false;
             return;
         }
 
         // --- Line-of-sight check ---
-        // Raycast toward the player. If we hit an obstacle first,
-        // the player is occluded.
         Vector3 rayOrigin = transform.position + Vector3.up * 1f; // Eye height.
         Vector3 rayDir    = (Player.position + Vector3.up * 1f) - rayOrigin;
 
         if (Physics.Raycast(rayOrigin, rayDir.normalized, out RaycastHit hit,
                             distance, obstacleMask, QueryTriggerInteraction.Ignore))
         {
-            // Hit an obstacle before reaching the player → blocked.
             IsPlayerVisible = false;
             return;
         }
@@ -300,9 +382,9 @@ public abstract class EnemyBase : MonoBehaviour
     //  Navigation Wrappers (Execution Layer)
     // ──────────────────────────────────────────────
     //
-    //  Subclasses use these instead of accessing Agent directly.
-    //  This keeps the decision layer decoupled from Unity's
-    //  NavMesh implementation details.
+    //  Subclasses use these instead of accessing the NavMeshAgent
+    //  directly. The agent field is private — these are the ONLY
+    //  way to command movement.
     //
 
     /// <summary>
@@ -312,10 +394,10 @@ public abstract class EnemyBase : MonoBehaviour
     /// <param name="destination">World-space target position.</param>
     public void MoveToTarget(Vector3 destination)
     {
-        if (IsDead || !Agent.isOnNavMesh) return;
+        if (IsDead || !agent.isOnNavMesh) return;
 
-        Agent.isStopped = false;
-        Agent.SetDestination(destination);
+        agent.isStopped = false;
+        agent.SetDestination(destination);
     }
 
     /// <summary>
@@ -326,7 +408,7 @@ public abstract class EnemyBase : MonoBehaviour
     public void SetSpeed(float speed)
     {
         if (IsDead) return;
-        Agent.speed = speed;
+        agent.speed = speed;
     }
 
     /// <summary>
@@ -335,7 +417,7 @@ public abstract class EnemyBase : MonoBehaviour
     public void ResetSpeed()
     {
         if (IsDead) return;
-        Agent.speed = defaultSpeed;
+        agent.speed = defaultSpeed;
     }
 
     /// <summary>
@@ -344,10 +426,10 @@ public abstract class EnemyBase : MonoBehaviour
     /// </summary>
     public void StopNavigation()
     {
-        if (!Agent.isOnNavMesh) return;
+        if (!agent.isOnNavMesh) return;
 
-        Agent.isStopped      = true;
-        Agent.ResetPath();
+        agent.isStopped = true;
+        agent.ResetPath();
     }
 
     /// <summary>
@@ -356,12 +438,12 @@ public abstract class EnemyBase : MonoBehaviour
     /// </summary>
     public bool HasReachedDestination()
     {
-        if (!Agent.isOnNavMesh) return false;
-        if (Agent.pathPending)  return false;
-        if (!Agent.hasPath)     return false;
-        if (Agent.pathStatus != NavMeshPathStatus.PathComplete) return false;
+        if (!agent.isOnNavMesh) return false;
+        if (agent.pathPending)  return false;
+        if (!agent.hasPath)     return false;
+        if (agent.pathStatus != NavMeshPathStatus.PathComplete) return false;
 
-        return Agent.remainingDistance <= Agent.stoppingDistance;
+        return agent.remainingDistance <= agent.stoppingDistance;
     }
 
     // ──────────────────────────────────────────────
@@ -369,7 +451,7 @@ public abstract class EnemyBase : MonoBehaviour
     // ──────────────────────────────────────────────
 
     /// <summary>
-    /// Returns the flat (XZ) distance between this enemy and the player.
+    /// Returns the distance between this enemy and the player.
     /// Returns float.MaxValue if the player reference is null.
     /// </summary>
     protected float GetDistanceToPlayer()
@@ -405,29 +487,38 @@ public abstract class EnemyBase : MonoBehaviour
     /// </summary>
     private void HandleDeath()
     {
-        if (IsDead) return; // Guard against double-fire.
+        if (IsDead) return;
 
         IsDead = true;
 
         // --- Shut down navigation ---
-        if (Agent.isOnNavMesh)
+        if (agent.isOnNavMesh)
         {
-            Agent.isStopped = true;
-            Agent.ResetPath();
+            agent.isStopped = true;
+            agent.ResetPath();
         }
-        Agent.enabled = false;
+        agent.enabled = false;
 
         Debug.Log($"[EnemyBase] '{gameObject.name}' has been eliminated.", this);
 
         // --- Notify the subclass ---
-        // The subclass can stop coroutines, disable VFX, play death
-        // animations, etc. The base class does not handle visuals.
         OnEnemyDeath();
     }
 
     // ──────────────────────────────────────────────
-    //  Abstract / Virtual Hooks (for subclasses)
+    //  Virtual Hooks (for subclasses)
     // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Called once at the end of Awake(), after all base initialization
+    /// is complete (components cached, NavMeshAgent configured, player
+    /// found, death event subscribed). Override this for one-time
+    /// subclass setup — no need to call base.
+    ///
+    /// Example: cache nearby Swarm neighbours, initialise utility
+    /// weights, start ambient coroutines.
+    /// </summary>
+    protected virtual void OnInit() { }
 
     /// <summary>
     /// Called every frame (after perception updates). This is where
@@ -442,12 +533,21 @@ public abstract class EnemyBase : MonoBehaviour
     protected abstract void OnThink();
 
     /// <summary>
-    /// Called once when this enemy is killed. Override this to run
-    /// subclass-specific cleanup (stop coroutines, disable particle
+    /// Called once when this enemy is killed, after the base shutdown
+    /// sequence (NavMeshAgent disabled, IsDead set). Override this to
+    /// run subclass-specific cleanup (stop coroutines, disable particle
     /// effects, trigger death animations, etc.).
     ///
     /// NOTE: Navigation is already disabled by the time this is called.
     /// The Health component handles the actual Destroy(gameObject).
     /// </summary>
     protected virtual void OnEnemyDeath() { }
+
+    /// <summary>
+    /// Called from OnDestroy() after the base has unsubscribed from
+    /// Health events. Override this for subclass teardown if needed
+    /// (e.g., unsubscribing from external events, clearing static
+    /// references). No need to call base.
+    /// </summary>
+    protected virtual void OnCleanup() { }
 }
