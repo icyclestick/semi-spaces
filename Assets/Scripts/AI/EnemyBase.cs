@@ -120,7 +120,11 @@ public abstract class EnemyBase : MonoBehaviour
     //  Internal State
     // ──────────────────────────────────────────────
 
-    /// <summary>Timer for throttling perception updates.</summary>
+    /// <summary>
+    /// Timer for throttling perception updates. Initialised to a random
+    /// offset so enemies spawned on the same frame don't all raycast
+    /// simultaneously (spreads the load across multiple frames).
+    /// </summary>
     private float perceptionTimer;
 
     // ──────────────────────────────────────────────
@@ -145,6 +149,12 @@ public abstract class EnemyBase : MonoBehaviour
 
         // --- Clamp perception tick rate to safe minimum ---
         perceptionTickRate = Mathf.Max(perceptionTickRate, 0.05f);
+
+        // --- Stagger perception start ---
+        // Randomise the initial timer so enemies spawned on the same
+        // frame don't all fire UpdatePerception() simultaneously.
+        // Each enemy's first perception tick lands on a different frame.
+        perceptionTimer = Random.Range(0f, perceptionTickRate);
 
         // --- Find the player ---
         // Uses the "Player" tag by convention. If your player doesn't
