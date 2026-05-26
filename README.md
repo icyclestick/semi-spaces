@@ -74,11 +74,94 @@ public interface IDamageable
 
 ---
 
+## ◈ Enemy Architecture — `EnemyBase.cs`
+
+`EnemyBase` is the **shared foundation** for all enemy types. Think of it as a fully functional enemy *body* — it can see, move, and die — but it has no *brain*. The AI team plugs in the brain by extending the class and overriding `OnThink()`.
+
+```
+  EnemyBase (abstract "body" — Aisaiah)
+  ├── Perception Layer: LOS, FOV cone, Last Known Position
+  ├── Execution Layer:  NavMeshAgent wrappers (MoveToTarget, StopNavigation)
+  └── Health Lifecycle:  Auto-subscribes to Health.OnDeath, shuts down on kill
+        │
+        ├── SwarmAgent : EnemyBase      (Jen's "brain" — Boids algorithm)
+        │     └── override OnThink()  →  separation + alignment + cohesion + pursuit
+        │
+        └── DuelistBrain : EnemyBase    (Ash's "brain" — Utility scoring)
+              └── override OnThink()  →  score actions + priority overrides
+```
+
+> [!IMPORTANT]
+> **Jen and Ash: your scripts MUST extend `EnemyBase`.** Do not create standalone MonoBehaviours with your own NavMeshAgent or Health references. EnemyBase already handles all of that.
+
+### What EnemyBase Gives You (free, no code needed)
+
+| Feature | How to Use |
+|---|---|
+| `IsPlayerVisible` | Read this bool — perception updates automatically |
+| `LastKnownPosition` | The last place the player was seen (persists after LOS breaks) |
+| `HasDetectedPlayer` | True once the player has been spotted at least once |
+| `GetDistanceToPlayer()` | Returns float distance to the player |
+| `GetDirectionToPlayer()` | Returns normalized Vector3 toward the player |
+| `MoveToTarget(Vector3)` | Commands the NavMeshAgent to pathfind |
+| `StopNavigation()` | Halts the NavMeshAgent |
+| `SetSpeed(float)` / `ResetSpeed()` | Change movement speed contextually |
+| `HasReachedDestination()` | True when the agent arrives |
+| `IsDead` | True after the death sequence runs |
+
+### What You Implement
+
+| Method | Required? | Purpose |
+|---|---|---|
+| `OnThink()` | **Yes** (abstract) | Your AI algorithm — runs every frame after perception updates |
+| `OnEnemyDeath()` | Optional (virtual) | Cleanup — stop coroutines, disable VFX, play death animation |
+
+### Minimal Example
+
+```csharp
+public class SwarmAgent : EnemyBase
+{
+    protected override void OnThink()
+    {
+        if (!IsPlayerVisible) return;
+
+        // Your Boids algorithm here.
+        Vector3 steering = CalculateBoids();
+        MoveToTarget(transform.position + steering);
+    }
+
+    protected override void OnEnemyDeath()
+    {
+        // Custom cleanup (e.g., notify swarm group).
+    }
+}
+```
+
+---
+
 ## ◈ Rules of Engagement — AI (Jen & Ash)
+
+### You MUST extend `EnemyBase`
+
+All enemy scripts **must** inherit from `EnemyBase`. Do not create standalone MonoBehaviours that duplicate navigation, perception, or health wiring. EnemyBase is the body — you write the brain.
+
+```csharp
+// ✅ CORRECT — extend EnemyBase
+public class SwarmAgent : EnemyBase
+{
+    protected override void OnThink() { /* Boids here */ }
+}
+
+// ❌ WRONG — standalone script with its own NavMeshAgent
+public class SwarmAgent : MonoBehaviour
+{
+    private NavMeshAgent agent; // NO — EnemyBase already handles this
+}
+```
 
 ### You MUST use `Health.cs` for enemy health
 
-Every Swarm drone and Duelist anomaly prefab **must** have the `Health` component attached. Do not create custom health scripts. Configure `maxHealth` in the Inspector per-prefab.
+Every Swarm drone and Duelist anomaly prefab **must** have the `Health` component attached. Do not create custom health scripts. Configure `maxHealth` in the Inspector per-prefab. EnemyBase auto-requires it.
 
 ### You MUST deal damage through `IDamageable`
 
@@ -115,12 +198,13 @@ if (targetHealth != null)
 
 ```
 Assets/Scripts/AI/
-├── Swarm/          ← Jen's domain
-│   ├── SwarmAgent.cs
+├── EnemyBase.cs        ← Aisaiah's domain (DO NOT MODIFY)
+├── Swarm/              ← Jen's domain
+│   ├── SwarmAgent.cs   ← extends EnemyBase
 │   ├── SwarmFormation.cs
 │   └── ...
-└── Duelist/        ← Ash's domain
-    ├── DuelistBrain.cs
+└── Duelist/            ← Ash's domain
+    ├── DuelistBrain.cs ← extends EnemyBase
     ├── DuelistCombat.cs
     └── ...
 ```
@@ -197,8 +281,11 @@ Assets/Scripts/GameManager/ ← Your game logic
 |--------|----------|-------|---------|
 | `IDamageable.cs` | `Core/` | Aisaiah | Interface contract for all damage |
 | `Health.cs` | `Core/` | Aisaiah | Canonical health + death logic |
-| `FirstPersonController.cs` | `Player/` | Aisaiah | FPS movement, look, jump |
-| `RaycastShooter.cs` | `Player/` | Aisaiah | Hitscan weapon, resolves via `IDamageable` |
+| `ReturnToPool.cs` | `Core/` | Aisaiah | Returns pooled particles to ObjectPool |
+| `FirstPersonController.cs` | `Player/` | Aisaiah | FPS movement, sprint, crouch, slide, viewbob |
+| `RaycastShooter.cs` | `Player/` | Aisaiah | Hitscan weapon with shotgun spread, ammo, pooled hit sparks |
+| `WeaponManager.cs` | `Player/` | Aisaiah | Weapon switching (number keys + scroll wheel) |
+| `EnemyBase.cs` | `AI/` | Aisaiah | Abstract enemy foundation — perception, navigation, death lifecycle |
 
 ---
 
