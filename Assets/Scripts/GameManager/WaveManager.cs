@@ -311,7 +311,16 @@ public class WaveManager : MonoBehaviour
         Health health = enemy.GetComponent<Health>();
         if (health != null)
         {
-            health.OnDeath += OnEnemyDied;
+            // Self-unsubscribing closure: the handler removes itself
+            // from OnDeath when it fires, so the dead enemy's Health
+            // component doesn't retain a reference to WaveManager.
+            System.Action handler = null;
+            handler = () =>
+            {
+                health.OnDeath -= handler;
+                OnEnemyDied();
+            };
+            health.OnDeath += handler;
         }
         else
         {
