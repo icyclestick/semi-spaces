@@ -205,6 +205,12 @@ public class RaycastShooter : MonoBehaviour
     /// </summary>
     private ObjectPool<ParticleSystem> sparkPool;
 
+    /// <summary>
+    /// Cached fallback material for bullet trails when no trailMaterial
+    /// is assigned. Created once to avoid per-pellet Material allocations.
+    /// </summary>
+    private Material cachedTrailMaterial;
+
     // ──────────────────────────────────────────────
     //  Public Accessors
     // ──────────────────────────────────────────────
@@ -250,6 +256,20 @@ public class RaycastShooter : MonoBehaviour
                 defaultCapacity: poolDefaultSize,
                 maxSize:         poolMaxSize
             );
+
+            // --- Pre-warm the pool ---
+            // defaultCapacity only sets the backing collection size.
+            // We must actually instantiate objects so they're ready
+            // for the first shots — no allocation spike on first fire.
+            ParticleSystem[] prewarm = new ParticleSystem[poolDefaultSize];
+            for (int i = 0; i < poolDefaultSize; i++)
+            {
+                prewarm[i] = sparkPool.Get();
+            }
+            for (int i = 0; i < prewarm.Length; i++)
+            {
+                sparkPool.Release(prewarm[i]);
+            }
         }
     }
 
@@ -295,6 +315,28 @@ public class RaycastShooter : MonoBehaviour
         // Cancel any in-progress reload when the weapon is disabled
         // (e.g., weapon swap, death). Prevents ghost reloads.
         CancelReload();
+    }
+
+    /// <summary>
+    /// Disposes InputActions and cleans up the spark pool on destruction.
+    /// Without this, inline InputActions leak native memory.
+    /// </summary>
+    private void OnDestroy()
+    {
+        // --- Dispose input actions ---
+        shootAction?.Dispose();
+        reloadAction?.Dispose();
+
+        // --- Clean up pooled sparks ---
+        // ObjectPool.Clear() invokes actionOnDestroy for each pooled
+        // instance, which calls Destroy(gameObject) on them.
+        sparkPool?.Clear();
+
+        // --- Clean up cached trail material ---
+        if (cachedTrailMaterial != null)
+        {
+            Destroy(cachedTrailMaterial);
+        }
     }
 
     private void Update()
@@ -546,15 +588,19 @@ public class RaycastShooter : MonoBehaviour
         line.startWidth = trailStartWidth;
         line.endWidth   = trailEndWidth;
 
-        // Apply material. If no material is assigned, use the default
-        // Sprites/Default shader so the trail colour is visible.
+        // Apply material. If no material is assigned, use a shared
+        // cached fallback so we don't allocate a new Material per pellet.
         if (trailMaterial != null)
         {
             line.material = trailMaterial;
         }
         else
         {
-            line.material = new Material(Shader.Find("Sprites/Default"));
+            if (cachedTrailMaterial == null)
+            {
+                cachedTrailMaterial = new Material(Shader.Find("Sprites/Default"));
+            }
+            line.material = cachedTrailMaterial;
         }
 
         line.startColor = trailColor;
