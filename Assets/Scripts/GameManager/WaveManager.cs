@@ -118,8 +118,6 @@ public class WaveManager : MonoBehaviour
     /// <summary>True once all waves have been cleared.</summary>
     private bool gameWon;
 
-    /// <summary>True while a wave is actively spawning enemies.</summary>
-    private bool isSpawning;
 
     /// <summary>Reference to the active spawn coroutine.</summary>
     private Coroutine spawnCoroutine;
@@ -237,7 +235,6 @@ public class WaveManager : MonoBehaviour
     /// <param name="wave">The Wave data to spawn.</param>
     private IEnumerator SpawnWave(Wave wave)
     {
-        isSpawning = true;
 
         // Calculate total enemies for this wave.
         totalEnemiesInWave = wave.swarmDroneCount + wave.duelistAnomalyCount;
@@ -287,7 +284,6 @@ public class WaveManager : MonoBehaviour
             }
         }
 
-        isSpawning = false;
     }
 
     /// <summary>
@@ -352,8 +348,12 @@ public class WaveManager : MonoBehaviour
         activeEnemiesCount--;
 
         // Clamp to zero — safety net against double-fire edge cases.
+        // A negative count means something fired OnDeath more than once
+        // for the same enemy, which is a bug worth investigating.
         if (activeEnemiesCount < 0)
         {
+            Debug.LogWarning($"[WaveManager] activeEnemiesCount went to {activeEnemiesCount}! " +
+                             "A death event may have fired twice. Clamping to 0.", this);
             activeEnemiesCount = 0;
         }
 
