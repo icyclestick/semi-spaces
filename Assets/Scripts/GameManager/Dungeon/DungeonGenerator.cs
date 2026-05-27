@@ -363,6 +363,19 @@ public class DungeonGenerator : MonoBehaviour
 
         GameObject piece = Instantiate(prefab, position, rotation, parent);
         piece.name = prefab.name; // Strip the "(Clone)" suffix for cleaner hierarchy.
+
+        // --- Add MeshCollider if the prefab doesn't have a collider ---
+        if (piece.GetComponent<Collider>() == null)
+        {
+            MeshCollider col = piece.AddComponent<MeshCollider>();
+            // Shares the mesh from MeshFilter — this preserves openings
+            // (e.g. gate doorways) that a BoxCollider would fill solid.
+            MeshFilter mf = piece.GetComponent<MeshFilter>();
+            if (mf != null && mf.sharedMesh != null)
+            {
+                col.sharedMesh = mf.sharedMesh;
+            }
+        }
     }
 
     /// <summary>
