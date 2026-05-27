@@ -253,6 +253,45 @@ Assets/Scripts/AI/
     └── ...
 ```
 
+### Combat & Damage — `ContactDamage.cs`
+
+`ContactDamage.cs` is a **reusable, zero-code damage primitive** that lives in `Core/`. Attach it to any GameObject with a trigger collider to deal damage on contact via `IDamageable`.
+
+> [!TIP]
+> **Jen:** To give your Swarm drones melee attacks, you do NOT need to write collision code. Just attach `ContactDamage` to the drone prefab and configure it in the Inspector.
+
+**Setup (Swarm drone example):**
+
+1. Select the Swarm drone prefab.
+2. Add a **Collider** (Sphere/Capsule) → check **Is Trigger**.
+3. Attach `ContactDamage.cs`.
+4. Configure in Inspector:
+
+| Field | What It Does | Suggested Value |
+|---|---|---|
+| `damageAmount` | Damage per hit (int, resolves via IDamageable) | `5` for drones, `15` for Duelist melee |
+| `damageInterval` | Seconds between hits on the **same** target | `0.5` = 2 hits/sec max |
+| `targetLayers` | Which layers receive damage | Set to `Player` only |
+| `disableAfterHit` | One-shot mode (for projectile impacts) | `false` for melee |
+
+**What it handles for you:**
+- Per-target cooldown (won't deal 60 damage ticks per second)
+- IDamageable resolution (works with Health, future Shield, Armor, etc.)
+- Layer filtering (drones won't damage each other)
+- Zero heap allocations inside physics callbacks
+
+**What you still own:**
+- Your AI brain decides **when** to chase and get close — `ContactDamage` handles the damage on contact automatically.
+- For **ranged attacks** (Duelist projectiles), you'll need a separate `EnemyProjectile.cs` (coming soon).
+
+```csharp
+// You do NOT need to write this in your brain script:
+// ❌ void OnTriggerEnter(Collider c) { c.GetComponent<IDamageable>()?.TakeDamage(5); }
+//
+// ContactDamage.cs already does this with proper cooldowns.
+// Just attach it to the prefab and focus on your OnThink() algorithm.
+```
+
 ---
 
 ## ◈ Rules of Engagement — Level Design (Jyesh)
@@ -296,6 +335,72 @@ Assets/Scripts/GameManager/ ← Your game logic
 
 ---
 
+## ◈ For the UI/UX Team (Jyesh) — `GameManager.cs`
+
+The **GameManager** is now live as a global Singleton (`GameManager.Instance`). It owns all game state transitions — you do **not** need to write state-tracking logic. Your job is to build the visual UI responses (Canvas screens, animations) and wire them to the events below.
+
+> [!IMPORTANT]
+> **You do NOT need to track win/loss/pause state yourself.** GameManager handles all of it. You only need to show/hide UI panels in response to these events.
+
+### Available Events (wire in Inspector)
+
+Select the **GameManager** GameObject → find these UnityEvent fields → click **+** → drag your UI Canvas/Panel → select the appropriate method (e.g., `SetActive(true)`).
+
+| UnityEvent | Fires When | What to Show |
+|---|---|---|
+| `onGameStarted` | Game begins (after Awake/Start) | Hide menu, show HUD |
+| `onGamePaused` | Player presses Escape | Show pause menu overlay |
+| `onGameResumed` | Player unpauses | Hide pause menu |
+| `onGameOver` | Player dies (Health.OnDeath) | Show "GAME OVER" screen + restart button |
+| `onGameWon` | All waves cleared (WaveManager) | Show "VICTORY" screen |
+
+### Wiring the Win Condition
+
+The WaveManager fires `onGameWon` when the final wave is cleared. To connect it to GameManager:
+
+1. Select the **WaveManager** GameObject.
+2. Find `onGameWon` in the Inspector → click **+**.
+3. Drag the **GameManager** GameObject into the slot.
+4. Set the function to `GameManager.CompleteGame()`.
+
+### Wiring UI Buttons
+
+GameManager exposes public methods for common UI buttons:
+
+| Button Action | Method to Wire |
+|---|---|
+| "Restart" button | `GameManager.RestartGame()` |
+| "Quit" button | `GameManager.QuitGame()` |
+| "Resume" button | `GameManager.ResumeGame()` |
+| "Pause" button | `GameManager.PauseGame()` |
+
+### Reading State from Code (if needed)
+
+```csharp
+// Check game state from any script:
+if (GameManager.Instance.IsPlaying) { /* gameplay logic */ }
+if (GameManager.Instance.IsPaused)  { /* skip input */ }
+if (GameManager.Instance.IsGameEnded) { /* disable AI */ }
+
+// Access the enum directly:
+GameManager.GameState state = GameManager.Instance.CurrentState;
+```
+
+### WaveManager Events (for HUD kill counter / wave display)
+
+These events live on the **WaveManager** GameObject, not GameManager:
+
+| UnityEvent | Parameters | Use Case |
+|---|---|---|
+| `onWaveStarted(int)` | Wave number (1-indexed) | "WAVE 3" splash text |
+| `onEnemyKilled(int, int)` | (remaining, total) | Kill counter: "12/20" |
+| `onWaveCleared` | — | Wave complete fanfare |
+
+> [!CAUTION]
+> **Do not set `Time.timeScale` from your UI scripts.** GameManager owns timeScale. If you need to pause, call `GameManager.Instance.PauseGame()` — don't set it directly or you'll desync the state machine.
+
+---
+
 ## ◈ Testing Protocol
 
 > [!WARNING]
@@ -330,6 +435,9 @@ Assets/Scripts/GameManager/ ← Your game logic
 | `RaycastShooter.cs` | `Player/` | Aisaiah | Hitscan weapon with shotgun spread, ammo, pooled hit sparks |
 | `WeaponManager.cs` | `Player/` | Aisaiah | Weapon switching (number keys + scroll wheel) |
 | `EnemyBase.cs` | `AI/` | Aisaiah | Abstract enemy foundation — perception, navigation, death lifecycle |
+| `ContactDamage.cs` | `Core/` | Aisaiah | Reusable melee/hazard damage via IDamageable with per-target cooldown |
+| `GameManager.cs` | `GameManager/` | Aisaiah | Singleton game state (Playing/Paused/GameOver/GameWon) + win/loss flow |
+| `WaveManager.cs` | `GameManager/` | Aisaiah | Wave spawning, enemy death tracking, wave progression events |
 
 ---
 
