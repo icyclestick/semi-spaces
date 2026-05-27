@@ -162,6 +162,9 @@ public class RaycastShooter : MonoBehaviour
     [SerializeField, Tooltip("Fired when a reload completes.")]
     private UnityEvent onReloadFinish;
 
+    [Tooltip("Fired every time the weapon fires (before pellets). Use for recoil / muzzle flash.")]
+    public UnityEvent onFire;
+
     // ──────────────────────────────────────────────
     //  Debug
     // ──────────────────────────────────────────────
@@ -398,6 +401,9 @@ public class RaycastShooter : MonoBehaviour
 
         // Notify any subscribed HUD elements.
         onAmmoChanged?.Invoke(currentAmmo, maxAmmo);
+
+        // Notify recoil / muzzle-flash subscribers.
+        onFire?.Invoke();
 
         // --- Fire each pellet ---
         Vector3 origin      = shootOrigin.position;

@@ -1131,8 +1131,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WeaponMount
   playerCamera: {fileID: 2098232414}
   holdOffset: {x: 0.47, y: -0.45, z: 0.93}
-  lookSway: 0.562
-  moveSway: 0.179
+  weaponManager: {fileID: 0}
+  equipDuration: 0.4
+  equipRotationArc: 20
+  recoilIntensity: 0.06
+  recoilKickAngle: 4
+  recoilRecoverySpeed: 18
+  bobMultiplier: 2
 --- !u!1 &32523291
 GameObject:
   m_ObjectHideFlags: 0
@@ -53702,6 +53707,9 @@ MonoBehaviour:
   onReloadFinish:
     m_PersistentCalls:
       m_Calls: []
+  onFire:
+    m_PersistentCalls:
+      m_Calls: []
   debugRayDuration: 0.5
 --- !u!1 &1755021424
 GameObject:
@@ -56236,6 +56244,9 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   onReloadFinish:
+    m_PersistentCalls:
+      m_Calls: []
+  onFire:
     m_PersistentCalls:
       m_Calls: []
   debugRayDuration: 0.5
@@ -59653,8 +59664,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WeaponMount
   playerCamera: {fileID: 2098232414}
   holdOffset: {x: 0.47, y: -0.45, z: 0.93}
-  lookSway: 0.562
-  moveSway: 0.179
+  weaponManager: {fileID: 0}
+  equipDuration: 0.4
+  equipRotationArc: 20
+  recoilIntensity: 0.06
+  recoilKickAngle: 4
+  recoilRecoverySpeed: 18
+  bobMultiplier: 1
 --- !u!1 &1948093563
 GameObject:
   m_ObjectHideFlags: 0
