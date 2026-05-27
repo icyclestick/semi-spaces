@@ -77,6 +77,15 @@ public class DungeonBuilder : MonoBehaviour
     private int roomsPlaced;
     private int corridorsBuilt;
 
+    /// <summary>Width of the root room (set after generation).</summary>
+    public int RootWidth { get; private set; }
+
+    /// <summary>Height of the root room (set after generation).</summary>
+    public int RootHeight { get; private set; }
+
+    /// <summary>World-space center of the root room floor (set after generation).</summary>
+    public Vector3 RootCenter { get; private set; }
+
     // ──────────────────────────────────────────────
     //  Public API
     // ──────────────────────────────────────────────
@@ -116,6 +125,12 @@ public class DungeonBuilder : MonoBehaviour
         MarkOccupied(Vector3.zero, rootN, rootM);
         roomsPlaced++;
 
+        // --- Record root room info for player spawning ---
+        RootWidth = rootN;
+        RootHeight = rootM;
+        float ts = generator.TileSize;
+        RootCenter = new Vector3((rootN - 1) * ts / 2f, 0f, (rootM - 1) * ts / 2f);
+
         foreach (DungeonGenerator.GateInfo gate in gates)
             frontier.Enqueue(gate);
 
@@ -137,7 +152,7 @@ public class DungeonBuilder : MonoBehaviour
             }
 
             int corridorLen = Random.Range(minCorridorLength, maxCorridorLength + 1);
-            float ts = generator.TileSize;
+            float tileSz = generator.TileSize;
             float gateOut = generator.GateOutwardOffset;
 
             // --- Pick new room size ---
@@ -152,10 +167,10 @@ public class DungeonBuilder : MonoBehaviour
             for (int extend = 0; extend <= 4; extend++)
             {
                 int tryLen = corridorLen + extend;
-                Vector3 tryEnd = gate.position + gate.direction * ((tryLen + 1) * ts);
-                Vector3 tryOrigin = ComputeRoomOrigin(tryEnd, gate.direction, newN, newM, ts, gateOut);
+                Vector3 tryEnd = gate.position + gate.direction * ((tryLen + 1) * tileSz);
+                Vector3 tryOrigin = ComputeRoomOrigin(tryEnd, gate.direction, newN, newM, tileSz, gateOut);
 
-                if (!Overlaps(tryOrigin, newN, newM, ts))
+                if (!Overlaps(tryOrigin, newN, newM, tileSz))
                 {
                     finalOrigin = tryOrigin;
                     finalLen = tryLen;
