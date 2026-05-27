@@ -162,6 +162,7 @@ public class SwarmFormation : MonoBehaviour
     public List<SwarmAgent> GetNeighbours(SwarmAgent requester, float radius)
     {
         neighbourBuffer.Clear();
+        if (requester == null) return neighbourBuffer;
 
         float radiusSqr = radius * radius;
         Vector3 origin = requester.transform.position;
