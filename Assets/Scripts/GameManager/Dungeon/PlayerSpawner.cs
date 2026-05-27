@@ -26,6 +26,9 @@ public class PlayerSpawner : MonoBehaviour
     [SerializeField, Tooltip("The DungeonBuilder that handles generation.")]
     private DungeonBuilder dungeonBuilder;
 
+    [SerializeField, Tooltip("Optional: EnemySpawner to populate rooms after generation.")]
+    private EnemySpawner enemySpawner;
+
     [SerializeField, Tooltip("Optional: a player prefab to spawn. If left empty, the " +
         "spawner finds an existing player in the scene and teleports them instead.")]
     private GameObject playerPrefab;
@@ -44,7 +47,7 @@ public class PlayerSpawner : MonoBehaviour
     //  Public API
     // ──────────────────────────────────────────────
 
-    [ContextMenu("Generate Level & Place Player")]
+    [ContextMenu("Generate Full Level")]
     public void GenerateAndPlace()
     {
         if (dungeonBuilder == null)
@@ -79,6 +82,16 @@ public class PlayerSpawner : MonoBehaviour
         if (cc != null) cc.enabled = true;
 
         Debug.Log($"[PlayerSpawner] Player placed at {spawnPos}.", this);
+
+        // --- Spawn enemies (if EnemySpawner is assigned) ---
+        if (enemySpawner != null)
+        {
+            enemySpawner.SpawnEnemies();
+        }
+        else
+        {
+            Debug.Log("[PlayerSpawner] No EnemySpawner assigned — skipping enemy spawn.", this);
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -87,7 +100,26 @@ public class PlayerSpawner : MonoBehaviour
 
     private GameObject GetOrCreatePlayer()
     {
-        // --- Option A: spawn from prefab ---
+        // --- Always prefer the existing scene player ---
+        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        if (player == null)
+        {
+            FirstPersonController fpc = FindObjectOfType<FirstPersonController>();
+            if (fpc != null) player = fpc.gameObject;
+        }
+
+        if (player != null)
+        {
+            // Destroy any previously-spawned player since we're using the scene one.
+            if (spawnedPlayer != null)
+            {
+                DestroyImmediate(spawnedPlayer);
+                spawnedPlayer = null;
+            }
+            return player;
+        }
+
+        // --- Fallback: spawn from prefab if no scene player exists ---
         if (playerPrefab != null)
         {
             if (spawnedPlayer != null)
@@ -97,15 +129,6 @@ public class PlayerSpawner : MonoBehaviour
             spawnedPlayer.name = playerPrefab.name;
             return spawnedPlayer;
         }
-
-        // --- Option B: find existing player ---
-        // Try tag first.
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if (player != null) return player;
-
-        // Try finding a FirstPersonController as fallback.
-        FirstPersonController fpc = FindObjectOfType<FirstPersonController>();
-        if (fpc != null) return fpc.gameObject;
 
         return null;
     }

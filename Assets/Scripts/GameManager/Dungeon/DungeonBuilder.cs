@@ -86,6 +86,21 @@ public class DungeonBuilder : MonoBehaviour
     /// <summary>World-space center of the root room floor (set after generation).</summary>
     public Vector3 RootCenter { get; private set; }
 
+    /// <summary>Tile size from the generator (for spawn math).</summary>
+    public float TileSize => generator != null ? generator.TileSize : 4f;
+
+    /// <summary>Info about each placed room, for enemy spawning etc.</summary>
+    public readonly List<RoomInfo> PlacedRooms = new List<RoomInfo>();
+
+    /// <summary>Origin + dimensions of a generated room.</summary>
+    [System.Serializable]
+    public struct RoomInfo
+    {
+        public Vector3 origin;
+        public int width;
+        public int height;
+    }
+
     // ──────────────────────────────────────────────
     //  Public API
     // ──────────────────────────────────────────────
@@ -130,6 +145,10 @@ public class DungeonBuilder : MonoBehaviour
         RootHeight = rootM;
         float ts = generator.TileSize;
         RootCenter = new Vector3((rootN - 1) * ts / 2f, 0f, (rootM - 1) * ts / 2f);
+
+        // --- Track room for enemy spawning ---
+        PlacedRooms.Clear();
+        PlacedRooms.Add(new RoomInfo { origin = Vector3.zero, width = rootN, height = rootM });
 
         foreach (DungeonGenerator.GateInfo gate in gates)
             frontier.Enqueue(gate);
@@ -201,6 +220,7 @@ public class DungeonBuilder : MonoBehaviour
             DungeonGenerator.GateInfo[] newGates = generator.BuildRoom(newN, newM, finalOrigin, parent);
             MarkOccupied(finalOrigin, newN, newM);
             roomsPlaced++;
+            PlacedRooms.Add(new RoomInfo { origin = finalOrigin, width = newN, height = newM });
 
             // --- Open the connecting gate (the one facing back toward the corridor) ---
             Vector3 backDir = -gate.direction;
