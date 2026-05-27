@@ -30,9 +30,13 @@ public class DungeonGenerator : MonoBehaviour
     [SerializeField, Tooltip("The straight wall piece (template-wall.fbx).")]
     private GameObject wallPrefab;
 
-    [SerializeField, Tooltip("The gate piece to place at the midpoint of each side " +
-        "(e.g. gate.fbx, gate-door.fbx, gate-door-window.fbx, gate-metal-bars.fbx).")]
-    private GameObject gatePrefab;
+    [SerializeField, Tooltip("The open gate piece placed when a corridor extends from this side " +
+        "(e.g. gate.fbx, gate-door.fbx).")]
+    private GameObject gateOpenPrefab;
+
+    [SerializeField, Tooltip("The closed gate piece placed by default on all sides. " +
+        "Swapped to the open variant when a corridor is built from that gate.")]
+    private GameObject gateClosedPrefab;
 
     [SerializeField, Tooltip("The floor tile piece (template-floor.fbx).")]
     private GameObject floorPrefab;
@@ -185,10 +189,16 @@ public class DungeonGenerator : MonoBehaviour
                            "Drag template-wall from the DungeonKit folder.", this);
         }
 
-        if (gatePrefab == null)
+        if (gateClosedPrefab == null)
         {
-            Debug.LogError("[DungeonGenerator] Gate Prefab is not assigned. " +
-                           "Drag a gate variant from the DungeonKit folder.", this);
+            Debug.LogError("[DungeonGenerator] Gate Closed Prefab is not assigned. " +
+                           "Drag the closed gate variant from the DungeonKit folder.", this);
+        }
+
+        if (gateOpenPrefab == null)
+        {
+            Debug.LogWarning("[DungeonGenerator] Gate Open Prefab is not assigned. " +
+                            "Closed gates will not be swapped when corridors are built.", this);
         }
 
         if (tileSize <= 0f)
@@ -258,11 +268,11 @@ public class DungeonGenerator : MonoBehaviour
                 PlacePiece(wallPrefab, parent, ox + maxX + wallOut, z, 90f);   // right
         }
 
-        // --- Gates ---
-        PlacePiece(gatePrefab, parent, ox + midX * tileSize, oz - gateOut, 0f);    // bottom
-        PlacePiece(gatePrefab, parent, ox + midX * tileSize, oz + maxZ + gateOut, 180f);  // top
-        PlacePiece(gatePrefab, parent, ox - gateOut, oz + midZ * tileSize, 270f);  // left
-        PlacePiece(gatePrefab, parent, ox + maxX + gateOut, oz + midZ * tileSize, 90f);   // right
+        // --- Gates (closed by default; swapped to open when a corridor extends) ---
+        PlacePiece(gateClosedPrefab, parent, ox + midX * tileSize, oz - gateOut, 0f);
+        PlacePiece(gateClosedPrefab, parent, ox + midX * tileSize, oz + maxZ + gateOut, 180f);
+        PlacePiece(gateClosedPrefab, parent, ox - gateOut, oz + midZ * tileSize, 270f);
+        PlacePiece(gateClosedPrefab, parent, ox + maxX + gateOut, oz + midZ * tileSize, 90f);
 
         // --- Floors (all grid cells except the 4 corners) ---
         for (int i = 0; i < n; i++)
@@ -307,6 +317,9 @@ public class DungeonGenerator : MonoBehaviour
     public void BuildCorridor(Vector3 startPos, Vector3 direction, int length, Transform parent)
     {
         if (corridorPrefab == null || corridorEndPrefab == null) return;
+
+        // --- Swap the closed gate at startPos to the open variant ---
+        SwapClosedGateToOpen(startPos, parent);
 
         float rot = CorridorRotation(direction);
 
@@ -374,6 +387,28 @@ public class DungeonGenerator : MonoBehaviour
             if (mf != null && mf.sharedMesh != null)
             {
                 col.sharedMesh = mf.sharedMesh;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Finds the closed gate child at <paramref name="worldPos"/> under
+    /// <paramref name="parent"/> and replaces it with the open gate prefab.
+    /// </summary>
+    public void SwapClosedGateToOpen(Vector3 worldPos, Transform parent)
+    {
+        if (gateOpenPrefab == null || gateClosedPrefab == null) return;
+
+        foreach (Transform child in parent)
+        {
+            if (Vector3.Distance(child.position, worldPos) < 0.1f
+                && child.name == gateClosedPrefab.name)
+            {
+                Quaternion rot = child.rotation;
+                DestroyImmediate(child.gameObject);
+                PlacePiece(gateOpenPrefab, parent, worldPos.x, worldPos.z,
+                           rot.eulerAngles.y);
+                return;
             }
         }
     }

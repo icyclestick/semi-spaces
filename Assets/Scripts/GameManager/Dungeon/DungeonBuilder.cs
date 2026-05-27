@@ -187,10 +187,20 @@ public class DungeonBuilder : MonoBehaviour
             MarkOccupied(finalOrigin, newN, newM);
             roomsPlaced++;
 
+            // --- Open the connecting gate (the one facing back toward the corridor) ---
+            Vector3 backDir = -gate.direction;
+            foreach (DungeonGenerator.GateInfo g in newGates)
+            {
+                if (g.direction == backDir)
+                {
+                    generator.SwapClosedGateToOpen(g.position, parent);
+                    break;
+                }
+            }
+
             Debug.Log($"[DungeonBuilder] Placed {newN}×{newM} room at ({finalOrigin.x:F0},{finalOrigin.z:F0}).");
 
             // --- Enqueue new gates (skip the one facing back toward the corridor) ---
-            Vector3 backDir = -gate.direction;
             foreach (DungeonGenerator.GateInfo g in newGates)
             {
                 if (g.direction != backDir)
