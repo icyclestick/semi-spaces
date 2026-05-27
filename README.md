@@ -282,7 +282,6 @@ Assets/Scripts/AI/
 
 **What you still own:**
 - Your AI brain decides **when** to chase and get close — `ContactDamage` handles the damage on contact automatically.
-- For **ranged attacks** (Duelist projectiles), you'll need a separate `EnemyProjectile.cs` (coming soon).
 
 ```csharp
 // You do NOT need to write this in your brain script:
@@ -291,6 +290,52 @@ Assets/Scripts/AI/
 // ContactDamage.cs already does this with proper cooldowns.
 // Just attach it to the prefab and focus on your OnThink() algorithm.
 ```
+
+### Ranged Attacks — `EnemyProjectile.cs`
+
+`EnemyProjectile.cs` is a **kinematic projectile** in `Core/`. It moves via `transform.Translate` (no Rigidbody), uses a swept raycast each frame to prevent tunnelling through thin walls, and resolves damage through `IDamageable` on impact.
+
+> [!TIP]
+> **Ash:** To give your Duelist ranged attacks, create a bullet prefab, attach `EnemyProjectile`, and call `Instantiate()` from your brain script. The projectile handles all raycast math, damage, and self-cleanup.
+
+**Setup (Duelist projectile example):**
+
+1. Create a small **Projectile prefab** (quad, capsule, or VFX particle).
+2. Attach `EnemyProjectile.cs`.
+3. Configure in Inspector:
+
+| Field | What It Does | Suggested Value |
+|---|---|---|
+| `speed` | Travel speed (units/sec) | `25` |
+| `damage` | Damage on hit (resolves via IDamageable) | `15` |
+| `lifetime` | Self-destruct failsafe (seconds) | `4` |
+| `hitMask` | Which layers the projectile can hit | `Player` + `Environment` (exclude `Enemy`) |
+
+**Spawning from your brain script:**
+
+```csharp
+// In DuelistBrain — add these fields:
+[SerializeField] private GameObject projectilePrefab;
+[SerializeField] private Transform firePoint;
+
+// Then call this when you want to shoot:
+private void FireProjectile()
+{
+    // The projectile spawns facing firePoint.forward and handles everything else.
+    Instantiate(projectilePrefab, firePoint.position, firePoint.rotation);
+}
+```
+
+**What it handles for you:**
+- Swept raycasting (anti-tunnelling through thin walls at high speed)
+- IDamageable damage resolution on impact
+- Self-destructs on ANY hit (wall, player, prop) or after lifetime expires
+- Layer filtering via `hitMask` (won't hit the shooter)
+
+**What you still own:**
+- Create the `firePoint` Transform on your Duelist prefab (an empty child object at the "muzzle")
+- Decide **when** to fire (in your `OnThink()` / `ExecuteAttack()` logic)
+- Set the fire rate / cooldown in your brain script
 
 ---
 
@@ -436,6 +481,7 @@ These events live on the **WaveManager** GameObject, not GameManager:
 | `WeaponManager.cs` | `Player/` | Aisaiah | Weapon switching (number keys + scroll wheel) |
 | `EnemyBase.cs` | `AI/` | Aisaiah | Abstract enemy foundation — perception, navigation, death lifecycle |
 | `ContactDamage.cs` | `Core/` | Aisaiah | Reusable melee/hazard damage via IDamageable with per-target cooldown |
+| `EnemyProjectile.cs` | `Core/` | Aisaiah | Kinematic ranged projectile — swept raycast, IDamageable damage, self-cleanup |
 | `GameManager.cs` | `GameManager/` | Aisaiah | Singleton game state (Playing/Paused/GameOver/GameWon) + win/loss flow |
 | `WaveManager.cs` | `GameManager/` | Aisaiah | Wave spawning, enemy death tracking, wave progression events |
 
