@@ -167,6 +167,15 @@ public class DuelistBrain : EnemyBase
     /// </summary>
     private float decisionTimer;
 
+    /// <summary>
+    /// Guards the SetSpeed call inside ExecuteRetreat so it only fires once
+    /// per retreat entry rather than every frame. Without this guard,
+    /// GetBaseSpeed() reads the already-boosted Velocity.magnitude on the
+    /// next frame and multiplies again, compounding speed exponentially.
+    /// Cleared whenever ResetSpeed() is called (Attack / Reposition entry).
+    /// </summary>
+    private bool retreatSpeedApplied;
+
     // ──────────────────────────────────────────────
     //  OnInit — One-time setup
     // ──────────────────────────────────────────────
@@ -183,11 +192,28 @@ public class DuelistBrain : EnemyBase
         attackTimer = Random.Range(0f, attackCooldown);
 
         // No reposition target assigned yet.
-        hasRepositionTarget = false;
+        hasRepositionTarget  = false;
+        retreatSpeedApplied  = false;
 
         Debug.Log($"[DuelistBrain] '{gameObject.name}' initialized. " +
                   $"MaxHealth={MaxHealth}, AttackDamage={attackDamage}, " +
                   $"MeleeRange={meleeRange}, EngagementRange={engagementRange}", this);
+    }
+
+    /// <summary>
+    /// Called by Unity when Inspector values change. Clamps engagementRange
+    /// to at least meleeRange + 1 so the ScoreReposition bandwidth is always
+    /// positive — a zero or negative bandwidth causes division-by-zero (NaN)
+    /// in the rangeFactor calculation.
+    /// </summary>
+    private void OnValidate()
+    {
+        if (engagementRange <= meleeRange)
+        {
+            engagementRange = meleeRange + 1f;
+            Debug.LogWarning($"[DuelistBrain] '{gameObject.name}' engagementRange must be " +
+                             $"greater than meleeRange. Clamped to {engagementRange}.", this);
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -447,6 +473,7 @@ public class DuelistBrain : EnemyBase
     private void ExecuteAttack()
     {
         hasRepositionTarget = false;
+        retreatSpeedApplied = false;    // Retreat will need a fresh SetSpeed if re-entered.
 
         // Guard: player may have been destroyed mid-frame (checklist item 5).
         if (Player == null) return;
@@ -592,7 +619,17 @@ public class DuelistBrain : EnemyBase
         }
 
         // ── Execute ───────────────────────────────────────────────────────────
-        SetSpeed(GetBaseSpeed() * retreatSpeedMultiplier);
+        // Apply the speed boost once per retreat entry. GetBaseSpeed() reads the
+        // live Velocity.magnitude which already reflects the boosted speed from
+        // the previous frame — calling SetSpeed every frame would compound the
+        // multiplier exponentially (3.5 → 4.9 → 6.86 → …). The retreatSpeedApplied
+        // flag is cleared whenever ResetSpeed() is called (Attack / Reposition),
+        // so re-entering Retreat after a different state always recalculates.
+        if (!retreatSpeedApplied)
+        {
+            SetSpeed(GetBaseSpeed() * retreatSpeedMultiplier);
+            retreatSpeedApplied = true;
+        }
         MoveToTarget(retreatPos);
 
         if (forced)
@@ -618,6 +655,7 @@ public class DuelistBrain : EnemyBase
     private void ExecuteReposition()
     {
         ResetSpeed();
+        retreatSpeedApplied = false;    // Retreat will need a fresh SetSpeed if re-entered.
 
         // Pick a new target only when needed.
         if (!hasRepositionTarget || HasReachedDestination())

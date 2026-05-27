@@ -316,7 +316,17 @@ public static class DuelistTestSceneBuilder
 
         // Wire the player reference directly via SerializedObject so EnemyBase
         // doesn't need FindWithTag (which requires the tag to be loaded at runtime).
-        SerializedObject so   = new SerializedObject(duelist.GetComponent<DuelistBrain>());
+        // Guard: GetComponent returns null if the prefab is missing DuelistBrain,
+        // which would throw inside new SerializedObject(null). Extract first and check.
+        DuelistBrain brain = duelist.GetComponent<DuelistBrain>();
+        if (brain == null)
+        {
+            Debug.LogWarning($"[DuelistTestSceneBuilder] '{DuelistName}' prefab is missing a " +
+                             "DuelistBrain component. Skipping player/mask wiring.", duelist);
+            return duelist;
+        }
+
+        SerializedObject so   = new SerializedObject(brain);
         SerializedProperty sp = so.FindProperty("player");    // The [SerializeField] private Transform player in EnemyBase.
         if (sp != null)
         {
