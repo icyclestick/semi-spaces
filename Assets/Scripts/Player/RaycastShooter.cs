@@ -110,6 +110,17 @@ public class RaycastShooter : MonoBehaviour
     private float trailFlashDuration = 0.05f;
 
     // ──────────────────────────────────────────────
+    //  Audio
+    // ──────────────────────────────────────────────
+
+    [Header("Audio")]
+    [SerializeField, Tooltip("Sound played when the weapon fires.")]
+    public AudioClip fireClip;
+
+    [SerializeField, Tooltip("How much the pitch randomly varies per shot. 0 = no variation, 0.1 = ±10%.")]
+    public float pitchVariance = 0.05f;
+
+    // ──────────────────────────────────────────────
     //  Hit Sparks (Object Pooled)
     // ──────────────────────────────────────────────
     //
@@ -153,8 +164,8 @@ public class RaycastShooter : MonoBehaviour
     //
 
     [Header("Events")]
-    [SerializeField, Tooltip("Fired whenever the ammo count changes. Passes (currentAmmo, maxAmmo).")]
-    private UnityEvent<int, int> onAmmoChanged;
+    [Tooltip("Fired whenever the ammo count changes. Passes (currentAmmo, maxAmmo).")]
+    public UnityEvent<int, int> onAmmoChanged;
 
     [SerializeField, Tooltip("Fired when a reload begins. Use to trigger HUD animations or sound.")]
     private UnityEvent onReloadStart;
@@ -302,6 +313,7 @@ public class RaycastShooter : MonoBehaviour
         {
             gunBarrel = shootOrigin;
         }
+
     }
 
     private void OnEnable()

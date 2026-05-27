@@ -1,15 +1,17 @@
 using UnityEngine;
+using TMPro;
 
 /// <summary>
 /// Auto-positions a weapon holder at a first-person offset relative to
 /// the player's camera. Adds equip animation (ease-out rotation + scale)
-/// on weapon switch, configurable recoil kickback on fire, and sway
-/// multipliers for look + movement.
+/// on weapon switch, configurable recoil kickback on fire, sway
+/// multipliers for look + movement, and ammo display via HUD Text.
 ///
 /// Setup:
 ///   1. Add this script to the Weapon_Holder GameObject.
 ///   2. Assign the Camera and WeaponManager.
-///   3. Tweak values in the Inspector.
+///   3. Drag a TextMeshProUGUI from your HUD Canvas into the Ammo Text field.
+///   4. Tweak values in the Inspector.
 /// </summary>
 public class WeaponMount : MonoBehaviour
 {
@@ -36,6 +38,14 @@ public class WeaponMount : MonoBehaviour
 
     [SerializeField, Tooltip("Upward rotation arc eased out during equip (degrees).")]
     private float equipRotationArc = 20f;
+
+    [Header("Audio")]
+    [SerializeField, Tooltip("Shared AudioSource for all weapon fire sounds. If null, one is auto-created on this GameObject.")]
+    private AudioSource fireAudioSource;
+
+    [Header("HUD")]
+    [SerializeField, Tooltip("TextMeshProUGUI on the HUD Canvas that shows ammo (e.g. '12 / 30').")]
+    private TMP_Text ammoText;
 
     [Header("Recoil")]
     [SerializeField, Tooltip("How far back the weapon kicks on fire. 0.02 = gentle, 0.12 = heavy.")]
@@ -94,6 +104,17 @@ public class WeaponMount : MonoBehaviour
             Debug.LogWarning("[WeaponMount] WeaponManager not found — weapon switch / recoil disabled.", this);
         }
 
+        // --- Shared audio source ---
+        if (fireAudioSource == null)
+        {
+            fireAudioSource = GetComponent<AudioSource>();
+            if (fireAudioSource == null)
+                fireAudioSource = gameObject.AddComponent<AudioSource>();
+            fireAudioSource.playOnAwake = false;
+            fireAudioSource.loop = false;
+            fireAudioSource.spatialBlend = 0f;
+        }
+
         // Initial equip + subscribe to starting weapon's shooter.
         TriggerEquip();
         SubscribeToActiveShooter();
@@ -129,7 +150,10 @@ public class WeaponMount : MonoBehaviour
     {
         // Unsubscribe old shooter.
         if (activeShooter != null)
+        {
             activeShooter.onFire.RemoveListener(ApplyRecoil);
+            activeShooter.onAmmoChanged.RemoveListener(UpdateAmmoText);
+        }
 
         // Subscribe new shooter.
         SubscribeToActiveShooter();
@@ -154,8 +178,23 @@ public class WeaponMount : MonoBehaviour
         {
             activeShooter = currentWeapon.GetComponentInChildren<RaycastShooter>();
             if (activeShooter != null)
+            {
                 activeShooter.onFire.AddListener(ApplyRecoil);
+                activeShooter.onAmmoChanged.AddListener(UpdateAmmoText);
+                // Show current ammo immediately.
+                UpdateAmmoText(activeShooter.CurrentAmmo, activeShooter.MaxAmmo);
+            }
         }
+
+        // Clear ammo text if no shooter found.
+        if (activeShooter == null)
+            UpdateAmmoText(0, 0);
+    }
+
+    private void UpdateAmmoText(int current, int max)
+    {
+        if (ammoText != null)
+            ammoText.text = $"{current} / {max}";
     }
 
     private void LateUpdate()
@@ -223,6 +262,16 @@ public class WeaponMount : MonoBehaviour
 
         recoilPosOffset = Vector3.ClampMagnitude(recoilPosOffset, recoilIntensity * 3f);
         recoilRotOffset = Mathf.Min(recoilRotOffset, recoilKickAngle * 3f);
+
+        // --- Play fire sound through shared AudioSource (persists across weapon switches) ---
+        if (fireAudioSource != null && activeShooter != null && activeShooter.fireClip != null)
+        {
+            fireAudioSource.pitch = 1f + Random.Range(-activeShooter.pitchVariance,
+                                                       activeShooter.pitchVariance);
+            fireAudioSource.Stop();
+            fireAudioSource.clip = activeShooter.fireClip;
+            fireAudioSource.Play();
+        }
 
         Debug.Log($"[WeaponMount] Recoil applied — posOffset: {recoilPosOffset.z:F3}, rotOffset: {recoilRotOffset:F1}°");
     }
