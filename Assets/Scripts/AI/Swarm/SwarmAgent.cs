@@ -278,19 +278,22 @@ public class SwarmAgent : EnemyBase
         if (neighbours.Count == 0) return Vector3.zero;
 
         Vector3 centroid = Vector3.zero;
+        int validCount = 0;
 
         for (int i = 0; i < neighbours.Count; i++)
         {
             // Guard: neighbour may have been destroyed mid-frame.
             if (neighbours[i] == null) continue;
             centroid += neighbours[i].transform.position;
+            validCount++;
         }
 
-        centroid /= neighbours.Count;
+        if (validCount == 0) return Vector3.zero;
+
+        centroid /= validCount;
 
         // Steer toward the centroid.
         return (centroid - transform.position).normalized;
-    }
 
     // ──────────────────────────────────────────────
     //  Boids — Pursuit
