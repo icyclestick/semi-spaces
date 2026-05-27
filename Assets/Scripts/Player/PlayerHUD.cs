@@ -1,0 +1,79 @@
+using UnityEngine;
+using UnityEngine.UI;
+
+/// <summary>
+/// Drives the player HUD — crosshair in screen center, health bar,
+/// and any additional UI elements. Attach to the Canvas GameObject.
+///
+/// Setup in Unity:
+///   1. Right-click in Hierarchy → UI → Canvas. Name it "PlayerHUD".
+///   2. On the Canvas, set Render Mode = Screen Space - Overlay.
+///   3. Right-click the Canvas → UI → Image. Name it "Crosshair".
+///      - Set its RectTransform anchor to center (Alt+Shift click center).
+///      - Set Width/Height to your desired crosshair size (e.g. 32×32).
+///      - Drag your crosshair SVG/PNG into the Source Image field.
+///      - Set Color to white (or green if you want a tint).
+///   4. Right-click the Canvas → UI → Slider. Name it "HealthBar".
+///      - Set anchor to top-left or top-center.
+///      - Remove the Handle Slide Area (delete the child).
+///      - Set Fill Area's Fill Rect color to red/green.
+///      - Set Min Value = 0, Max Value = 100 (or your max health).
+///   5. Drag this script onto the Canvas.
+///   6. Drag the Crosshair Image into the Crosshair field.
+///   7. Drag the HealthBar Slider into the Health Bar field.
+///   8. (Optional) Drag the player GameObject into the Player field,
+///      or leave empty to auto-find via tag "Player".
+/// </summary>
+public class PlayerHUD : MonoBehaviour
+{
+    [Header("UI Elements")]
+    [SerializeField, Tooltip("The crosshair Image in the center of the screen.")]
+    private Image crosshair;
+
+    [SerializeField, Tooltip("The health bar Slider.")]
+    private Slider healthBar;
+
+    [Header("Target")]
+    [SerializeField, Tooltip("The player GameObject. Leave empty to auto-find by tag 'Player'.")]
+    private GameObject player;
+
+    // ──────────────────────────────────────────────
+    //  State
+    // ──────────────────────────────────────────────
+
+    private Health playerHealth;
+
+    // ──────────────────────────────────────────────
+    //  Lifecycle
+    // ──────────────────────────────────────────────
+
+    private void Start()
+    {
+        if (player == null)
+            player = GameObject.FindGameObjectWithTag("Player");
+
+        if (player != null)
+            playerHealth = player.GetComponent<Health>();
+    }
+
+    private void Update()
+    {
+        // --- Health bar ---
+        if (healthBar != null && playerHealth != null)
+        {
+            healthBar.maxValue = playerHealth.MaxHealth;
+            healthBar.value = playerHealth.CurrentHealth;
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    //  Public API (for future extensions)
+    // ──────────────────────────────────────────────
+
+    /// <summary>Shows or hides the crosshair.</summary>
+    public void SetCrosshairVisible(bool visible)
+    {
+        if (crosshair != null)
+            crosshair.enabled = visible;
+    }
+}
