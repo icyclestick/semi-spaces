@@ -131,7 +131,7 @@ GameObject:
   - component: {fileID: 218711432}
   - component: {fileID: 218711431}
   - component: {fileID: 218711434}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Main Camera
   m_TagString: MainCamera
   m_Icon: {fileID: 0}
@@ -339,7 +339,7 @@ GameObject:
   - component: {fileID: 732614825}
   - component: {fileID: 732614823}
   - component: {fileID: 732614831}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Player
   m_TagString: Player
   m_Icon: {fileID: -964228994112308473, guid: 0000000000000000d000000000000000, type: 0}
@@ -645,7 +645,7 @@ GameObject:
   m_Component:
   - component: {fileID: 921761653}
   - component: {fileID: 921761654}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Wep_Revolver
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -747,7 +747,7 @@ GameObject:
   m_Component:
   - component: {fileID: 955251574}
   - component: {fileID: 955251575}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Weapon_Holder
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -892,7 +892,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1839987830}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: GunBarrel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -924,7 +924,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2062069678}
   - component: {fileID: 2062069679}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Wep_Shotgun
   m_TagString: Untagged
   m_Icon: {fileID: 0}
