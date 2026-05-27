@@ -28,11 +28,11 @@ public class EnemySpawner : MonoBehaviour
     private Transform enemiesParent;
 
     [Header("Global Caps")]
-    [SerializeField, Tooltip("Minimum total enemies per room (overrides per-type min if higher).")]
-    private int minEnemiesPerRoom = 1;
+    [SerializeField, Tooltip("Floor — per-room count won't drop below this. Set to 0 to use only per-type mins.")]
+    private int minEnemiesPerRoom = 0;
 
-    [SerializeField, Tooltip("Maximum total enemies per room (overrides per-type max if lower).")]
-    private int maxEnemiesPerRoom = 5;
+    [SerializeField, Tooltip("Ceiling — per-room count won't exceed this. Set high (e.g. 100) to use only per-type maxes.")]
+    private int maxEnemiesPerRoom = 100;
 
     [SerializeField, Tooltip("If true, the root room (room 0) gets no enemies.")]
     private bool skipRootRoom = true;
@@ -139,11 +139,15 @@ public class EnemySpawner : MonoBehaviour
         EnemyTypeEntry type = enemyTypes[Random.Range(0, enemyTypes.Count)];
 
         // --- Determine count (clamped by global caps and type ranges) ---
+        // Per-type counts, clamped by global caps.
+        // Set global caps high (e.g. 100) if you want per-type to be the sole limit.
         int minCount = Mathf.Max(minEnemiesPerRoom, type.minCount);
-        int maxCount = Mathf.Min(maxEnemiesPerRoom, type.maxCount);
+        int maxCount = Mathf.Clamp(type.maxCount, minCount, maxEnemiesPerRoom);
         if (minCount > maxCount) minCount = maxCount;
 
         int count = Random.Range(minCount, maxCount + 1);
+        Debug.Log($"[EnemySpawner] Room {room.origin}: type={type.prefab.name}, " +
+                  $"min={minCount} max={maxCount} → picked {count} (global caps: {minEnemiesPerRoom}/{maxEnemiesPerRoom})");
         if (count <= 0) return 0;
 
         // --- Room bounds (world-space rectangle at y=0) ---
