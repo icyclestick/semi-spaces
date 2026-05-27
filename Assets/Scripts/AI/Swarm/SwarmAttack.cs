@@ -67,8 +67,10 @@ public class SwarmAttack : MonoBehaviour
             damageable.TakeDamage(attackDamage);
             cooldownTimer = attackCooldown;
 
-            Debug.Log($"[SwarmAttack] '{gameObject.name}' attacked '{target.name}' " +
-                      $"for {attackDamage} damage.");
+            if (Debug.isDebugBuild)
+            {
+                Debug.Log($"[SwarmAttack] '{gameObject.name}' attacked '{target.name}' for {attackDamage} damage.");
+            }
             return true;
         }
 
