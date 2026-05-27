@@ -325,12 +325,25 @@ public class GameManager : MonoBehaviour
     // ──────────────────────────────────────────────
 
     /// <summary>
-    /// Restarts the current scene. Resets timeScale and reloads.
+    /// Restarts the current scene. Destroys this singleton so the new
+    /// scene's GameManager can initialize fresh with valid references.
     /// Call from a "Restart" button on the Game Over / Win screen.
+    ///
+    /// Why destroy instead of rebind?
+    ///   On scene reload, the old Player is destroyed. If we keep this
+    ///   singleton alive (DontDestroyOnLoad), playerHealth becomes a
+    ///   stale reference and HandlePlayerDeath never fires again.
+    ///   Destroying and letting the new scene's Awake run clean is
+    ///   simpler and safer than manually rebinding every reference.
     /// </summary>
     public void RestartGame()
     {
         Time.timeScale = 1f;
+
+        // Clear the singleton so the new scene's GameManager can take over.
+        Instance = null;
+        Destroy(gameObject);
+
         UnityEngine.SceneManagement.SceneManager.LoadScene(
             UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex
         );

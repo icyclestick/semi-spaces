@@ -199,7 +199,7 @@ MonoBehaviour:
   damageInterval: 0.5
   targetLayers:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 8
   disableAfterHit: 0
 --- !u!136 &-3608583252158140779
 CapsuleCollider:

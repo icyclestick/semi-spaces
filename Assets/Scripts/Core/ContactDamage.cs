@@ -154,6 +154,10 @@ public class ContactDamage : MonoBehaviour
             if (currentTime - lastHit < damageInterval) return;
         }
 
+        // --- Zero-damage guard ---
+        // Skip all work if damage is non-positive (e.g., SetDamage(0) was called).
+        if (damageAmount <= 0) return;
+
         // --- Resolve damage through IDamageable ---
         // TryGetComponent avoids the null-check overhead of GetComponent
         // and returns false without allocating if the component doesn't exist.
@@ -190,9 +194,10 @@ public class ContactDamage : MonoBehaviour
 
         foreach (var kvp in lastHitTimes)
         {
-            // If the entry is older than the cleanup interval,
-            // the target is likely gone or no longer overlapping.
-            if (Time.time - kvp.Value > CLEANUP_INTERVAL)
+            // Use the larger of CLEANUP_INTERVAL and damageInterval so entries
+            // aren't pruned while their cooldown is still active.
+            float staleThreshold = Mathf.Max(CLEANUP_INTERVAL, damageInterval);
+            if (Time.time - kvp.Value > staleThreshold)
             {
                 if (staleKeys == null) staleKeys = new List<int>(4);
                 staleKeys.Add(kvp.Key);
