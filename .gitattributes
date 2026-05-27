@@ -1,0 +1,2 @@
+Assets/Scenes/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+Assets/Scenes/**/*.png filter=lfs diff=lfs merge=lfs -text
