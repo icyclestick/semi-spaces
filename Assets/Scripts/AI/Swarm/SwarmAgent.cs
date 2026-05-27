@@ -248,19 +248,22 @@ public class SwarmAgent : EnemyBase
         if (neighbours.Count == 0) return Vector3.zero;
 
         Vector3 averageVelocity = Vector3.zero;
+        int validCount = 0;
 
         for (int i = 0; i < neighbours.Count; i++)
         {
             // Guard: neighbour may have been destroyed mid-frame.
             if (neighbours[i] == null) continue;
             averageVelocity += neighbours[i].Velocity;
+            validCount++;
         }
 
-        averageVelocity /= neighbours.Count;
+        if (validCount == 0) return Vector3.zero;
+
+        averageVelocity /= validCount;
 
         // Return the desired steering adjustment (difference from our velocity).
         return averageVelocity - Velocity;
-    }
 
     // ──────────────────────────────────────────────
     //  Boids — Cohesion
