@@ -84,9 +84,6 @@ public class SwarmAttack : MonoBehaviour
     private void Update()
     {
         // Tick down the cooldown timer.
-        if (cooldownTimer > 0f)
-        {
-            cooldownTimer -= Time.deltaTime;
-        }
+        cooldownTimer = Mathf.Max(0f, cooldownTimer - Time.deltaTime);
     }
 }
