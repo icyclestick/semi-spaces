@@ -220,8 +220,7 @@ public class SwarmAgent : EnemyBase
             if (distSqr < separationRadiusSqr && distSqr > 0.001f)
             {
                 // Inverse-distance weighting: closer = stronger push.
-                float dist = Mathf.Sqrt(distSqr);
-                force += offset.normalized / dist;
+                force += offset / distSqr;
                 count++;
             }
         }
