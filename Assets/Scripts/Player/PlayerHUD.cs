@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 /// <summary>
 /// Drives the player HUD — crosshair in screen center, health bar,
@@ -33,6 +34,9 @@ public class PlayerHUD : MonoBehaviour
     [SerializeField, Tooltip("The health bar Slider.")]
     private Slider healthBar;
 
+    [SerializeField, Tooltip("TextMeshProUGUI that shows 'HP: 100/100'.")]
+    private TMP_Text healthText;
+
     [Header("Target")]
     [SerializeField, Tooltip("The player GameObject. Leave empty to auto-find by tag 'Player'.")]
     private GameObject player;
@@ -58,11 +62,16 @@ public class PlayerHUD : MonoBehaviour
 
     private void Update()
     {
-        // --- Health bar ---
-        if (healthBar != null && playerHealth != null)
+        // --- Health bar + text ---
+        if (playerHealth != null)
         {
-            healthBar.maxValue = playerHealth.MaxHealth;
-            healthBar.value = playerHealth.CurrentHealth;
+            if (healthBar != null)
+            {
+                healthBar.maxValue = playerHealth.MaxHealth;
+                healthBar.value = playerHealth.CurrentHealth;
+            }
+            if (healthText != null)
+                healthText.text = $"HP: {playerHealth.CurrentHealth}/{playerHealth.MaxHealth}";
         }
     }
 

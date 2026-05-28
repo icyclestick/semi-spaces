@@ -69,9 +69,9 @@ public class Health : MonoBehaviour, IDamageable
     // ──────────────────────────────────────────────
 
     [Header("Events")]
-    [SerializeField, Tooltip("Fired in the Inspector when this entity dies. " +
+    [Tooltip("Fired in the Inspector when this entity dies. " +
         "Use this to trigger level progression, spawn effects, update score, etc.")]
-    private UnityEvent onDeathEvent;
+    public UnityEvent onDeathEvent;
 
     [SerializeField, Tooltip("Fired in the Inspector when health changes. " +
         "Useful for wiring up UI health bars without code.")]
@@ -169,7 +169,7 @@ public class Health : MonoBehaviour, IDamageable
     {
         isDead = true;
 
-        Debug.Log($"[Health] '{gameObject.name}' has died.", this);
+        Debug.Log($"[Health] '{gameObject.name}' has died. OnDeath is {(OnDeath == null ? "NULL" : "subscribed")}.", this);
 
         // Notify C# subscribers (AI scripts, score manager, etc.).
         OnDeath?.Invoke();
