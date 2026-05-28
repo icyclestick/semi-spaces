@@ -99,10 +99,6 @@ public class DuelistBrain : EnemyBase
              "Typically a child of the Duelist at eye/weapon height.")]
     [SerializeField] private Transform firePoint;
 
-    [Tooltip("Damage dealt per hit. Kept as a reference value — the actual damage " +
-             "applied to targets is configured on the projectile prefab in the Inspector.")]
-    [SerializeField, Min(1)] private int attackDamage = 20;
-
     [Tooltip("Minimum time (seconds) between successive shots. " +
              "Prevents firing every frame.")]
     [SerializeField, Min(0.05f)] private float attackCooldown = 1.0f;
@@ -211,8 +207,8 @@ public class DuelistBrain : EnemyBase
         retreatSpeedApplied  = false;
 
         Debug.Log($"[DuelistBrain] '{gameObject.name}' initialized. " +
-                  $"MaxHealth={MaxHealth}, AttackDamage={attackDamage}, " +
-                  $"MeleeRange={meleeRange}, EngagementRange={engagementRange}", this);
+                  $"MaxHealth={MaxHealth}, MeleeRange={meleeRange}, " +
+                  $"EngagementRange={engagementRange}", this);
     }
 
     /// <summary>
@@ -530,16 +526,16 @@ public class DuelistBrain : EnemyBase
             return;
         }
 
-        // ── LOS Raycast: ensure no wall stands between the Duelist and the player ──
+        // ── LOS Raycast: ensure no wall stands between firePoint and the player ──
         // Even though EnemyBase confirms visibility each perception tick, the Duelist
         // may duck behind cover between ticks. The raycast catches that at fire-time
         // so projectiles cannot pass through geometry.
-        // Ray origin raised by 1 m to eye-level (avoids hitting the ground plane).
-        Vector3 rayOrigin   = transform.position + Vector3.up;
+        // Origin is firePoint.position — the exact world point the projectile spawns
+        // from — so the raycast and spawn share the same origin with no mismatch.
         Vector3 dirToPlayer = GetDirectionToPlayer();
         float distToPlayer  = GetDistanceToPlayer();
 
-        if (Physics.Raycast(rayOrigin, dirToPlayer, distToPlayer, coverMask,
+        if (Physics.Raycast(firePoint.position, dirToPlayer, distToPlayer, coverMask,
                             QueryTriggerInteraction.Ignore))
         {
             // Ray hit an obstacle before reaching the player — skip silently.
@@ -548,9 +544,12 @@ public class DuelistBrain : EnemyBase
         }
 
         // ── Spawn projectile ──────────────────────────────────────────────────────
-        // LOS is clear — spawn at firePoint so the projectile inherits the exact
-        // launch position and aim rotation.
-        Instantiate(projectilePrefab, firePoint.position, firePoint.rotation);
+        // LOS is clear. Spawn at firePoint.position with the explicitly computed aim
+        // rotation (Quaternion.LookRotation(aimDir)) so the projectile faces the
+        // player regardless of any non-identity local rotation on the firePoint child
+        // transform. firePoint.rotation is intentionally NOT used here.
+        Quaternion aimRotation = Quaternion.LookRotation(aimDir);
+        Instantiate(projectilePrefab, firePoint.position, aimRotation);
         attackTimer = attackCooldown;
 
         Debug.Log($"[DuelistBrain] '{gameObject.name}' fired projectile at Player " +
