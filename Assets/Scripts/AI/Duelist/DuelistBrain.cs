@@ -354,19 +354,25 @@ public class DuelistBrain : EnemyBase
     /// Scores the Attack action.
     ///
     /// Attack utility rises as:
-    ///   - Distance decreases (melee proximity is key).
+    ///   - Distance decreases (closer to the player = easier to hit).
     ///   - Health increases (healthy Duelists are bold).
     ///
     /// Formula:
-    ///   proximityFactor = 1 - saturate(distance / meleeRange)
-    ///       → 1.0 when right on top of the player, 0.0 at meleeRange.
+    ///   proximityFactor = 1 - saturate(distance / engagementRange)
+    ///       → 1.0 when right on top of the player, 0.0 at engagementRange.
+    ///       Uses engagementRange (not meleeRange) because ExecuteAttack holds
+    ///       standoff at engagementRange — meleeRange would return 0 at the
+    ///       Duelist's actual firing position, making Attack unselectable.
     ///   boldnessFactor  = healthFrac (healthy = bold)
     ///   score           = weight * proximityFactor * boldnessFactor
     /// </summary>
     private float ScoreAttack(float distance, float healthFrac)
     {
-        // Proximity utility: linear falloff from 1 to 0 over meleeRange.
-        float proximityFactor = Mathf.Clamp01(1f - (distance / meleeRange));
+        // Proximity utility: linear falloff from 1 to 0 over engagementRange.
+        // engagementRange is used (not meleeRange) because ExecuteAttack holds
+        // standoff at engagementRange; using meleeRange would yield 0.0 at the
+        // Duelist's intended firing position, preventing Attack from being selected.
+        float proximityFactor = Mathf.Clamp01(1f - (distance / engagementRange));
 
         // Boldness: directly proportional to remaining health.
         float boldnessFactor = healthFrac;
