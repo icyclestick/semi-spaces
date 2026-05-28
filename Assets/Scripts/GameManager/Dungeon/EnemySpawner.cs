@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using TMPro;
 
 /// <summary>
 /// Spawns enemies randomly inside each generated room after dungeon
@@ -42,10 +41,6 @@ public class EnemySpawner : MonoBehaviour
         "spawn fully above the floor and drop down cleanly.")]
     private float verticalSpawnOffset = 6f;
 
-    [Header("HUD")]
-    [SerializeField, Tooltip("TextMeshProUGUI that shows 'Enemies Left: n'.")]
-    private TMP_Text enemiesLeftText;
-
     [Header("Enemy Types")]
     [SerializeField, Tooltip("List of enemy types. Each room picks ONE type at random.")]
     private List<EnemyTypeEntry> enemyTypes = new List<EnemyTypeEntry>();
@@ -54,10 +49,15 @@ public class EnemySpawner : MonoBehaviour
     //  State
     // ──────────────────────────────────────────────
 
-    private int aliveCount;
-
-    /// <summary>Tracked enemy GameObjects for death polling.</summary>
-    private readonly List<GameObject> trackedEnemies = new List<GameObject>();
+    /// <summary>Current number of alive enemies (reads childCount).</summary>
+    public int AliveCount
+    {
+        get
+        {
+            Transform p = enemiesParent != null ? enemiesParent : transform;
+            return p.childCount;
+        }
+    }
 
     // ──────────────────────────────────────────────
     //  Data
@@ -119,9 +119,7 @@ public class EnemySpawner : MonoBehaviour
             for (int i = enemiesParent.childCount - 1; i >= 0; i--)
                 DestroyImmediate(enemiesParent.GetChild(i).gameObject);
         }
-        trackedEnemies.Clear();
-        aliveCount = 0;
-        UpdateEnemiesLeftText();
+        // (childCount resets when old enemies are destroyed above)
 
         // --- Spawn per room ---
         int totalSpawned = 0;
@@ -143,9 +141,7 @@ public class EnemySpawner : MonoBehaviour
             totalSpawned += SpawnInRoom(room);
         }
 
-        UpdateEnemiesLeftText();
-        Debug.Log($"[EnemySpawner] Spawned {totalSpawned} enemies across {rooms.Count} rooms. " +
-                  $"aliveCount={aliveCount}", this);
+        Debug.Log($"[EnemySpawner] Spawned {totalSpawned} enemies across {rooms.Count} rooms.", this);
     }
 
     // ──────────────────────────────────────────────
@@ -194,40 +190,10 @@ public class EnemySpawner : MonoBehaviour
 
             GameObject enemy = Instantiate(type.prefab, pos, Quaternion.identity, parent);
             enemy.name = type.prefab.name;
-            trackedEnemies.Add(enemy);
-
-            aliveCount++;
             spawned++;
         }
 
         return spawned;
-    }
-
-    private void UpdateEnemiesLeftText()
-    {
-        if (enemiesLeftText != null)
-            enemiesLeftText.text = $"Enemies Left: {aliveCount}";
-    }
-
-    private void Update()
-    {
-        if (trackedEnemies.Count == 0) return;
-
-        int count = 0;
-        for (int i = 0; i < trackedEnemies.Count; i++)
-        {
-            if (trackedEnemies[i] != null)
-                count++;
-        }
-
-        if (count != aliveCount)
-        {
-            aliveCount = count;
-            UpdateEnemiesLeftText();
-
-            if (count == 0)
-                trackedEnemies.Clear();
-        }
     }
 
 }

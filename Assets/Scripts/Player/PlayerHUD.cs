@@ -37,9 +37,15 @@ public class PlayerHUD : MonoBehaviour
     [SerializeField, Tooltip("TextMeshProUGUI that shows 'HP: 100/100'.")]
     private TMP_Text healthText;
 
+    [SerializeField, Tooltip("TextMeshProUGUI that shows 'Enemies Left: 42'.")]
+    private TMP_Text enemyCountText;
+
     [Header("Target")]
     [SerializeField, Tooltip("The player GameObject. Leave empty to auto-find by tag 'Player'.")]
     private GameObject player;
+
+    [SerializeField, Tooltip("The EnemySpawner for enemy count display.")]
+    private EnemySpawner enemySpawner;
 
     // ──────────────────────────────────────────────
     //  State
@@ -71,7 +77,17 @@ public class PlayerHUD : MonoBehaviour
                 healthBar.value = playerHealth.CurrentHealth;
             }
             if (healthText != null)
-                healthText.text = $"HP: {playerHealth.CurrentHealth}/{playerHealth.MaxHealth}";
+                healthText.text = $"{playerHealth.CurrentHealth}%";
+        }
+
+        // --- Enemy count (reads childCount directly — no polling needed) ---
+        if (enemySpawner != null && enemyCountText != null)
+        {
+            enemyCountText.text = $"Enemies Left: {enemySpawner.AliveCount}";
+        }
+        else if (enemyCountText != null && enemySpawner == null)
+        {
+            enemyCountText.text = "Enemies Left: --";
         }
     }
 

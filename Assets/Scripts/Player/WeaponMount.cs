@@ -194,7 +194,7 @@ public class WeaponMount : MonoBehaviour
     private void UpdateAmmoText(int current, int max)
     {
         if (ammoText != null)
-            ammoText.text = $"{current} / {max}";
+            ammoText.text = $"{current} | {max}";
     }
 
     private void LateUpdate()
