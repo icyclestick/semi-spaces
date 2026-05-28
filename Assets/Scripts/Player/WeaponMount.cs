@@ -74,9 +74,35 @@ public class WeaponMount : MonoBehaviour
     private Vector3 recoilPosOffset;
     private float recoilRotOffset;
 
+    // Reload
+    private float reloadStartTime = -1f;
+    private float reloadDuration;
+
+    /// <summary>True while the active weapon is reloading.</summary>
+    public bool IsReloading { get; private set; }
+
+    /// <summary>0–1 progress of the current reload. 0 when not reloading.</summary>
+    public float ReloadProgress { get; private set; }
+
+    /// <summary>Seconds remaining in the current reload. 0 when not reloading.</summary>
+    public float ReloadTimeRemaining { get; private set; }
+
     // ──────────────────────────────────────────────
     //  Lifecycle
     // ──────────────────────────────────────────────
+
+    private void OnEnable()
+    {
+        // When this weapon becomes active (switched to), subscribe to its shooter.
+        if (weaponManager != null)
+        {
+            int currentIdx = weaponManager.CurrentWeaponIndex;
+            // Only subscribe if this mount corresponds to the active weapon.
+            // (OnEnable fires for ALL weapons on first load, OnWeaponSwitched handles selection.)
+            if (initialized)
+                SubscribeToActiveShooter();
+        }
+    }
 
     private void Start()
     {
@@ -121,6 +147,20 @@ public class WeaponMount : MonoBehaviour
         initialized = true;
     }
 
+    private void OnDisable()
+    {
+        // Unsubscribe from shooter events when this weapon is deactivated.
+        if (activeShooter != null)
+        {
+            activeShooter.onFire.RemoveListener(ApplyRecoil);
+            activeShooter.onAmmoChanged.RemoveListener(UpdateAmmoText);
+            activeShooter.onReloadStart.RemoveListener(OnReloadStarted);
+            activeShooter.onReloadFinish.RemoveListener(OnReloadFinished);
+            activeShooter = null;
+        }
+        IsReloading = false;
+    }
+
     private void Update()
     {
         // --- Tick equip animation ---
@@ -139,6 +179,14 @@ public class WeaponMount : MonoBehaviour
                                        Time.deltaTime * recoilRecoverySpeed);
         recoilRotOffset = Mathf.Lerp(recoilRotOffset, 0f,
                                      Time.deltaTime * recoilRecoverySpeed);
+
+        // --- Tick reload ---
+        if (IsReloading)
+        {
+            float elapsed = Time.time - reloadStartTime;
+            ReloadProgress = Mathf.Clamp01(elapsed / reloadDuration);
+            ReloadTimeRemaining = Mathf.Max(0f, reloadDuration - elapsed);
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -153,6 +201,8 @@ public class WeaponMount : MonoBehaviour
         {
             activeShooter.onFire.RemoveListener(ApplyRecoil);
             activeShooter.onAmmoChanged.RemoveListener(UpdateAmmoText);
+            activeShooter.onReloadStart.RemoveListener(OnReloadStarted);
+            activeShooter.onReloadFinish.RemoveListener(OnReloadFinished);
         }
 
         // Subscribe new shooter.
@@ -181,6 +231,8 @@ public class WeaponMount : MonoBehaviour
             {
                 activeShooter.onFire.AddListener(ApplyRecoil);
                 activeShooter.onAmmoChanged.AddListener(UpdateAmmoText);
+                activeShooter.onReloadStart.AddListener(OnReloadStarted);
+                activeShooter.onReloadFinish.AddListener(OnReloadFinished);
                 // Show current ammo immediately.
                 UpdateAmmoText(activeShooter.CurrentAmmo, activeShooter.MaxAmmo);
             }
@@ -274,5 +326,21 @@ public class WeaponMount : MonoBehaviour
         }
 
         Debug.Log($"[WeaponMount] Recoil applied — posOffset: {recoilPosOffset.z:F3}, rotOffset: {recoilRotOffset:F1}°");
+    }
+
+    private void OnReloadStarted()
+    {
+        IsReloading = true;
+        reloadStartTime = Time.time;
+        reloadDuration = activeShooter != null ? activeShooter.reloadTime : 1.5f;
+        ReloadProgress = 0f;
+        ReloadTimeRemaining = reloadDuration;
+    }
+
+    private void OnReloadFinished()
+    {
+        IsReloading = false;
+        ReloadProgress = 1f;
+        ReloadTimeRemaining = 0f;
     }
 }

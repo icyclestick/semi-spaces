@@ -47,6 +47,16 @@ public class PlayerHUD : MonoBehaviour
     [SerializeField, Tooltip("The EnemySpawner for enemy count display.")]
     private EnemySpawner enemySpawner;
 
+    [SerializeField, Tooltip("All WeaponMount components (one per weapon child).")]
+    private WeaponMount[] weaponMounts;
+
+    [Header("Reload UI")]
+    [SerializeField, Tooltip("Slider showing reload progress (0–1). Hidden when not reloading.")]
+    private Slider reloadSlider;
+
+    [SerializeField, Tooltip("TMP text showing reload seconds remaining.")]
+    private TMP_Text reloadText;
+
     // ──────────────────────────────────────────────
     //  State
     // ──────────────────────────────────────────────
@@ -64,6 +74,7 @@ public class PlayerHUD : MonoBehaviour
 
         if (player != null)
             playerHealth = player.GetComponent<Health>();
+
     }
 
     private void Update()
@@ -77,7 +88,7 @@ public class PlayerHUD : MonoBehaviour
                 healthBar.value = playerHealth.CurrentHealth;
             }
             if (healthText != null)
-                healthText.text = $"{playerHealth.CurrentHealth}%";
+                healthText.text = $"{playerHealth.CurrentHealth}";
         }
 
         // --- Enemy count (reads childCount directly — no polling needed) ---
@@ -88,6 +99,33 @@ public class PlayerHUD : MonoBehaviour
         else if (enemyCountText != null && enemySpawner == null)
         {
             enemyCountText.text = "0";
+        }
+
+        // --- Reload indicator (checks all weapon mounts) ---
+        WeaponMount reloadingMount = null;
+        if (weaponMounts != null)
+        {
+            foreach (var wm in weaponMounts)
+            {
+                if (wm != null && wm.isActiveAndEnabled && wm.IsReloading)
+                {
+                    reloadingMount = wm;
+                    break;
+                }
+            }
+        }
+
+        if (reloadSlider != null)
+        {
+            reloadSlider.gameObject.SetActive(reloadingMount != null);
+            if (reloadingMount != null)
+                reloadSlider.value = reloadingMount.ReloadProgress;
+        }
+        if (reloadText != null)
+        {
+            reloadText.gameObject.SetActive(reloadingMount != null);
+            if (reloadingMount != null)
+                reloadText.text = reloadingMount.ReloadTimeRemaining.ToString("F1");
         }
     }
 
