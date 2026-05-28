@@ -534,8 +534,8 @@ public class DuelistBrain : EnemyBase
         // Even though EnemyBase confirms visibility each perception tick, the Duelist
         // may duck behind cover between ticks. The raycast catches that at fire-time
         // so projectiles cannot pass through geometry.
-        // Ray origin raised by 1 m to eye-level (avoids hitting the ground plane).
-        Vector3 rayOrigin   = transform.position + Vector3.up;
+        // Ray origin matches firePoint.position to ensure LOS check and projectile spawn share the same origin.
+        Vector3 rayOrigin   = firePoint.position;
         Vector3 dirToPlayer = GetDirectionToPlayer();
         float distToPlayer  = GetDistanceToPlayer();
 
@@ -548,9 +548,8 @@ public class DuelistBrain : EnemyBase
         }
 
         // ── Spawn projectile ──────────────────────────────────────────────────────
-        // LOS is clear — spawn at firePoint so the projectile inherits the exact
-        // launch position and aim rotation.
-        Instantiate(projectilePrefab, firePoint.position, firePoint.rotation);
+        // LOS is clear — spawn at firePoint with explicit aim rotation toward the player.
+        Instantiate(projectilePrefab, firePoint.position, Quaternion.LookRotation(dirToPlayer));
         attackTimer = attackCooldown;
 
         Debug.Log($"[DuelistBrain] '{gameObject.name}' fired projectile at Player " +
