@@ -88,6 +88,17 @@ public class SwarmAgent : EnemyBase
     private float attackRange = 2.5f;
 
     // ──────────────────────────────────────────────
+    //  Public Accessors
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Public velocity accessor for sibling SwarmAgents. EnemyBase.Velocity
+    /// is protected (only accessible as 'this'), so neighbour alignment
+    /// queries need this public wrapper to read other drones' velocities.
+    /// </summary>
+    public Vector3 CurrentVelocity => Velocity;
+
+    // ──────────────────────────────────────────────
     //  Cached References
     // ──────────────────────────────────────────────
 
@@ -253,7 +264,7 @@ public class SwarmAgent : EnemyBase
         {
             // Guard: neighbour may have been destroyed mid-frame.
             if (neighbours[i] == null) continue;
-            averageVelocity += neighbours[i].Velocity;
+            averageVelocity += neighbours[i].CurrentVelocity;
             validCount++;
         }
 
@@ -263,6 +274,7 @@ public class SwarmAgent : EnemyBase
 
         // Return the desired steering adjustment (difference from our velocity).
         return averageVelocity - Velocity;
+    }
 
     // ──────────────────────────────────────────────
     //  Boids — Cohesion
@@ -293,6 +305,7 @@ public class SwarmAgent : EnemyBase
 
         // Steer toward the centroid.
         return (centroid - transform.position).normalized;
+    }
 
     // ──────────────────────────────────────────────
     //  Boids — Pursuit
