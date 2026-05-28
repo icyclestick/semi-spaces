@@ -83,11 +83,11 @@ public class PlayerHUD : MonoBehaviour
         // --- Enemy count (reads childCount directly — no polling needed) ---
         if (enemySpawner != null && enemyCountText != null)
         {
-            enemyCountText.text = $"Enemies Left: {enemySpawner.AliveCount}";
+            enemyCountText.text = $"{enemySpawner.AliveCount}";
         }
         else if (enemyCountText != null && enemySpawner == null)
         {
-            enemyCountText.text = "Enemies Left: --";
+            enemyCountText.text = "0";
         }
     }
 
