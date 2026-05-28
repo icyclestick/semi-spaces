@@ -44,8 +44,11 @@ public class WeaponMount : MonoBehaviour
     private AudioSource fireAudioSource;
 
     [Header("HUD")]
-    [SerializeField, Tooltip("TextMeshProUGUI on the HUD Canvas that shows ammo (e.g. '12 / 30').")]
-    private TMP_Text ammoText;
+    [SerializeField, Tooltip("TextMeshProUGUI for current ammo.")]
+    private TMP_Text currentAmmoText;
+
+    [SerializeField, Tooltip("TextMeshProUGUI for max ammo.")]
+    private TMP_Text maxAmmoText;
 
     [Header("Recoil")]
     [SerializeField, Tooltip("How far back the weapon kicks on fire. 0.02 = gentle, 0.12 = heavy.")]
@@ -245,8 +248,10 @@ public class WeaponMount : MonoBehaviour
 
     private void UpdateAmmoText(int current, int max)
     {
-        if (ammoText != null)
-            ammoText.text = $"{current} | {max}";
+        if (currentAmmoText != null)
+            currentAmmoText.text = current.ToString();
+        if (maxAmmoText != null)
+            maxAmmoText.text = max.ToString();
     }
 
     private void LateUpdate()
