@@ -91,18 +91,33 @@ public class DuelistBrain : EnemyBase
     // ──────────────────────────────────────────────
 
     [Header("Attack")]
-    [Tooltip("Radius of the physics OverlapSphere used to detect targets during an attack.")]
-    [SerializeField, Min(0.1f)] private float attackRadius = 2.5f;
+    [Tooltip("Projectile prefab to spawn on each ranged attack. " +
+             "The prefab should carry its own speed, damage, and lifetime.")]
+    [SerializeField] private GameObject projectilePrefab;
 
-    [Tooltip("Damage dealt per successful melee hit via IDamageable.TakeDamage().")]
+    [Tooltip("World-space transform from which projectiles are spawned. " +
+             "Typically a child of the Duelist at eye/weapon height.")]
+    [SerializeField] private Transform firePoint;
+
+    [Tooltip("Damage dealt per hit. Kept as a reference value — the actual damage " +
+             "applied to targets is configured on the projectile prefab in the Inspector.")]
     [SerializeField, Min(1)] private int attackDamage = 20;
 
-    [Tooltip("Minimum time (seconds) between successive attack overlaps. " +
-             "Prevents hitting the player every frame.")]
+    [Tooltip("Minimum time (seconds) between successive shots. " +
+             "Prevents firing every frame.")]
     [SerializeField, Min(0.05f)] private float attackCooldown = 1.0f;
 
-    [Tooltip("LayerMask for the attack OverlapSphere. Set this to the Player layer " +
-             "so the overlap only hits valid targets and ignores geometry.")]
+    [Tooltip("LayerMask of walls and obstacles used for the LOS raycast before firing. " +
+             "The ray is blocked by any collider on these layers, preventing the Duelist " +
+             "from shooting through walls between perception ticks.")]
+    [SerializeField] private LayerMask coverMask;
+
+    // Kept for Scene-View gizmo reference only — no longer used in attack logic.
+    [Tooltip("(Reference) Former melee OverlapSphere radius. Unused by the ranged attack.")]
+    [SerializeField, Min(0.1f)] private float attackRadius = 2.5f;
+
+    // Kept for reference only — no longer used in attack logic.
+    [Tooltip("(Reference) Former OverlapSphere LayerMask. Unused by the ranged attack.")]
     [SerializeField] private LayerMask attackTargetMask;
 
     // ──────────────────────────────────────────────
@@ -457,18 +472,21 @@ public class DuelistBrain : EnemyBase
     }
 
     /// <summary>
-    /// ATTACK: Close in on the player, then, when in range and off
-    /// cooldown, fire a Physics.OverlapSphere to deal damage via IDamageable.
+    /// ATTACK: Close to within engagementRange, hold position, face the player,
+    /// perform a line-of-sight raycast, then spawn a projectile if the shot is clear.
     ///
     /// Two-phase execution:
-    ///   Phase 1 — Advance: pathfind directly toward the player.
-    ///   Phase 2 — Strike:  when inside attackRadius and cooldown expired,
-    ///             perform an OverlapSphere and call TakeDamage on each
-    ///             IDamageable hit.
+    ///   Phase 1 — Advance: pathfind toward the player until within engagementRange.
+    ///             Once inside that range, StopNavigation() so the Duelist holds a
+    ///             ranged standoff rather than running into the player.
+    ///   Phase 2 — Fire:   when the cooldown has elapsed, cast a ray from
+    ///             transform.position toward the player against coverMask.
+    ///             If the ray is clear, face the player and Instantiate projectilePrefab
+    ///             at firePoint. If the ray hits a wall, skip this frame silently.
     ///
-    /// The physics overlap is a "dummy" approximation — it represents the
-    /// Duelist's physical strike volume, not a hitscan ray. A real implementation
-    /// would tie this to an animation event.
+    /// References: ExecuteAttack, MoveToTarget, StopNavigation, GetDistanceToPlayer,
+    ///   GetDirectionToPlayer, engagementRange, attackTimer, attackCooldown,
+    ///   attackRadius (reference only), attackTargetMask (reference only), Player.
     /// </summary>
     private void ExecuteAttack()
     {
@@ -478,54 +496,65 @@ public class DuelistBrain : EnemyBase
         // Guard: player may have been destroyed mid-frame (checklist item 5).
         if (Player == null) return;
 
-        // Always close in on the player so we stay in melee range.
+        // ── Phase 1: Advance or hold standoff ────────────────────────────────────
+        // Close in until within engagementRange, then hold position.
+        // Stopping here gives the Duelist a ranged fighter stance rather than
+        // charging directly into the player.
         ResetSpeed();
-        MoveToTarget(Player.position);
-
-        // Only swing if within attack radius and the cooldown has elapsed.
         float distance = GetDistanceToPlayer();
-        if (distance > attackRadius || attackTimer > 0f) return;
-
-        // ── ATTACK OVERLAP (dummy physics) ──────────────────────────────────
-        // Centre the sphere on the Duelist's position (slightly forward to
-        // model a forward arm-swing). attackTargetMask limits hits to the
-        // Player layer so we don't accidentally damage other enemies.
-        Vector3 attackOrigin = transform.position + transform.forward * (attackRadius * 0.5f);
-
-        Collider[] hits = Physics.OverlapSphere(
-            attackOrigin,
-            attackRadius,
-            attackTargetMask,
-            QueryTriggerInteraction.Ignore);
-
-        bool hitSomething = false;
-        foreach (Collider hit in hits)
+        if (distance >= engagementRange)
         {
-            // Guard: a collider's GameObject may be destroyed between OverlapSphere
-            // and this iteration — TryGetComponent handles that safely.
-            if (hit == null) continue;
-
-            // Resolve damage through the IDamageable interface — never reference
-            // Health directly (Aisaiah's Golden Rule).
-            if (hit.TryGetComponent(out IDamageable target))
-            {
-                target.TakeDamage(attackDamage);
-                hitSomething = true;
-
-                Debug.Log($"[DuelistBrain] '{gameObject.name}' struck '{hit.gameObject.name}' " +
-                          $"for {attackDamage} damage.", this);
-            }
+            MoveToTarget(Player.position);
+        }
+        else
+        {
+            StopNavigation();   // Already at a good firing distance — hold here.
         }
 
-        // Reset cooldown regardless of whether we hit anything — the swing has
-        // already happened (prevents rapid-fire swings in empty space).
+        // Face the player every frame so projectiles always launch on-target.
+        Vector3 aimDir = GetDirectionToPlayer();
+        if (aimDir != Vector3.zero)
+            transform.rotation = Quaternion.LookRotation(aimDir);
+
+        // ── Phase 2: Fire ─────────────────────────────────────────────────────────
+        // Skip if the cooldown has not elapsed yet.
+        if (attackTimer > 0f) return;
+
+        // Guard: projectilePrefab and firePoint must both be assigned in the Inspector.
+        // Set cooldown to prevent log spam; the warning fires once per cooldown cycle.
+        if (projectilePrefab == null || firePoint == null)
+        {
+            Debug.LogWarning($"[DuelistBrain] '{gameObject.name}' cannot fire: " +
+                             "projectilePrefab and/or firePoint is not assigned in the Inspector.", this);
+            attackTimer = attackCooldown;
+            return;
+        }
+
+        // ── LOS Raycast: ensure no wall stands between the Duelist and the player ──
+        // Even though EnemyBase confirms visibility each perception tick, the Duelist
+        // may duck behind cover between ticks. The raycast catches that at fire-time
+        // so projectiles cannot pass through geometry.
+        // Ray origin raised by 1 m to eye-level (avoids hitting the ground plane).
+        Vector3 rayOrigin   = transform.position + Vector3.up;
+        Vector3 dirToPlayer = GetDirectionToPlayer();
+        float distToPlayer  = GetDistanceToPlayer();
+
+        if (Physics.Raycast(rayOrigin, dirToPlayer, distToPlayer, coverMask,
+                            QueryTriggerInteraction.Ignore))
+        {
+            // Ray hit an obstacle before reaching the player — skip silently.
+            // The Duelist will Reposition to find a clear firing line.
+            return;
+        }
+
+        // ── Spawn projectile ──────────────────────────────────────────────────────
+        // LOS is clear — spawn at firePoint so the projectile inherits the exact
+        // launch position and aim rotation.
+        Instantiate(projectilePrefab, firePoint.position, firePoint.rotation);
         attackTimer = attackCooldown;
 
-        if (!hitSomething)
-        {
-            Debug.Log($"[DuelistBrain] '{gameObject.name}' attacked but missed " +
-                      $"(OverlapSphere at {attackOrigin}, radius={attackRadius}).", this);
-        }
+        Debug.Log($"[DuelistBrain] '{gameObject.name}' fired projectile at Player " +
+                  $"(dist={distance:F1} m).", this);
     }
 
     /// <summary>
