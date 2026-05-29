@@ -61,22 +61,17 @@ public class DuelistBrain : EnemyBase
 
     [Header("Utility Weights")]
     [Tooltip("Base utility multiplier for the Attack action. Higher = more aggressive.")]
-    [SerializeField] private float attackWeight = 1.5f;
+    [SerializeField] private float attackWeight = 1.0f;
 
     [Tooltip("Base utility multiplier for the Retreat action. Higher = more survivable.")]
-    [SerializeField] private float retreatWeight = 0.8f;
+    [SerializeField] private float retreatWeight = 1.5f;
 
     [Tooltip("Base utility multiplier for the Reposition action. Higher = more tactical.")]
     [SerializeField] private float repositionWeight = 1.2f;
 
     // ──────────────────────────────────────────────
-    //  Inspector — Subsumption Thresholds
+    //  Inspector — Distance Thresholds
     // ──────────────────────────────────────────────
-
-    [Header("Subsumption Thresholds")]
-    [Tooltip("Health fraction below which the survival override forces a retreat " +
-             "regardless of utility scores. 0.25 = retreat when below 25% HP.")]
-    [SerializeField, Range(0.01f, 0.5f)] private float criticalHealthFraction = 0.25f;
 
     [Tooltip("Distance (in units) at which the Duelist considers itself 'in melee range' " +
              "and Attack scores are boosted. Should be slightly larger than the attack radius.")]
@@ -366,7 +361,7 @@ public class DuelistBrain : EnemyBase
         // Boldness: U-shaped curve. High at 100% (confident), drops at 50% (cautious),
         // and spikes massively at critical health (berserker last stand).
         float desperation = 1f - healthFrac;
-        float boldnessFactor = healthFrac + (desperation * desperation * desperation);
+        float boldnessFactor = healthFrac + (desperation * desperation * desperation) * 3f;
 
         return attackWeight * proximityFactor * boldnessFactor;
     }
