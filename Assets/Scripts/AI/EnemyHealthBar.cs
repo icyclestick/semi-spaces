@@ -44,6 +44,7 @@ public class EnemyHealthBar : MonoBehaviour
 
     private Health enemyHealth;
     private Transform rootEnemy;
+    private Canvas canvas;
 
     // ──────────────────────────────────────────────
     //  Lifecycle
@@ -70,6 +71,10 @@ public class EnemyHealthBar : MonoBehaviour
 
         if (healthSlider == null)
             healthSlider = GetComponentInChildren<Slider>();
+
+        canvas = GetComponent<Canvas>();
+        if (canvas == null)
+            canvas = GetComponentInChildren<Canvas>();
 
         if (enemyHealth != null && healthSlider != null)
         {
@@ -101,6 +106,14 @@ public class EnemyHealthBar : MonoBehaviour
         if (healthSlider != null)
         {
             healthSlider.value = enemyHealth.CurrentHealth;
+        }
+
+        // --- Show only when damaged ---
+        if (canvas != null)
+        {
+            bool damaged = enemyHealth.CurrentHealth < enemyHealth.MaxHealth;
+            if (canvas.enabled != damaged)
+                canvas.enabled = damaged;
         }
 
         // --- Update optional texts ---

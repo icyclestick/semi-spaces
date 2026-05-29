@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.AI.Navigation;
 
 /// <summary>
 /// Orchestrates multi-room dungeon generation using a frontier-based
@@ -247,6 +248,9 @@ public class DungeonBuilder : MonoBehaviour
 
         Debug.Log($"[DungeonBuilder] Done: {roomsPlaced} rooms, {corridorsBuilt} corridors, " +
                   $"{iterations} iterations.", this);
+
+        // --- Bake NavMesh on the generated dungeon ---
+        BakeNavMesh(root);
     }
 
     // ──────────────────────────────────────────────
@@ -367,6 +371,28 @@ public class DungeonBuilder : MonoBehaviour
     // ──────────────────────────────────────────────
     //  Helpers
     // ──────────────────────────────────────────────
+
+    // ──────────────────────────────────────────────
+    //  NavMesh Baking
+    // ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Adds a NavMeshSurface to the generated dungeon and bakes the
+    /// NavMesh so AI enemies can pathfind through rooms and corridors.
+    /// Uses PhysicsColliders geometry (MeshColliders already live on every
+    /// placed dungeon piece) and collects from all children recursively.
+    /// </summary>
+    private void BakeNavMesh(GameObject dungeonRoot)
+    {
+        NavMeshSurface surface = dungeonRoot.GetComponent<NavMeshSurface>();
+        if (surface == null)
+            surface = dungeonRoot.AddComponent<NavMeshSurface>();
+
+        surface.collectObjects = CollectObjects.Children;
+        surface.BuildNavMesh();
+
+        Debug.Log("[DungeonBuilder] NavMesh baked on GeneratedDungeon.", this);
+    }
 
     private int RandomOddInRange(int min, int max)
     {

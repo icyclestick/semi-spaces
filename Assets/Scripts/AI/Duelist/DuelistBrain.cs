@@ -198,8 +198,8 @@ public class DuelistBrain : EnemyBase
         attackTimer = Random.Range(0f, attackCooldown);
 
         // No reposition target assigned yet.
-        hasRepositionTarget  = false;
-        retreatSpeedApplied  = false;
+        hasRepositionTarget = false;
+        retreatSpeedApplied = false;
 
         Debug.Log($"[DuelistBrain] '{gameObject.name}' initialized. " +
                   $"MaxHealth={MaxHealth}, MeleeRange={meleeRange}, " +
@@ -268,11 +268,11 @@ public class DuelistBrain : EnemyBase
         }
 
         // ── STEP 1: MEU SCORING (decision layer) ────────────────────────────
-        float distance   = GetDistanceToPlayer();
+        float distance = GetDistanceToPlayer();
         float healthFrac = MaxHealth > 0 ? (float)CurrentHealth / MaxHealth : 1f;
 
-        float attackScore     = ScoreAttack(distance, healthFrac);
-        float retreatScore    = ScoreRetreat(distance, healthFrac);
+        float attackScore = ScoreAttack(distance, healthFrac);
+        float retreatScore = ScoreRetreat(distance, healthFrac);
         float repositionScore = ScoreReposition(distance, healthFrac);
 
         // ── STEP 2: SELECT — with hysteresis guard ───────────────────────────
@@ -293,9 +293,9 @@ public class DuelistBrain : EnemyBase
                       $"Reposition={repositionScore:F2} | " +
                       $"dist={distance:F1} hp={CurrentHealth}/{MaxHealth}", this);
 
-            lastAction    = candidate;
+            lastAction = candidate;
             decisionTimer = decisionHoldTime;   // Commit to this state for at least decisionHoldTime seconds.
-            chosen        = candidate;
+            chosen = candidate;
         }
         else
         {
@@ -394,7 +394,7 @@ public class DuelistBrain : EnemyBase
         // proximityScale reaches 1.0 at half-engagement distance, 0.5 at engagement
         // range, and falls to 0 at twice engagement range.
         float proximityScale = Mathf.Clamp01(engagementRange / Mathf.Max(distance, 0.1f) - 0.5f);
-        float woundedFactor  = (1f - healthFrac) * proximityScale;
+        float woundedFactor = (1f - healthFrac) * proximityScale;
 
         // Pressure from player proximity inside melee range (physical threat spike).
         float pressureFactor = Mathf.Clamp01(1f - (distance / meleeRange));
@@ -420,7 +420,7 @@ public class DuelistBrain : EnemyBase
     private float ScoreReposition(float distance, float healthFrac)
     {
         // Prefer repositioning when in the band between melee and engagement range.
-        float midpoint  = (meleeRange + engagementRange) * 0.5f;
+        float midpoint = (meleeRange + engagementRange) * 0.5f;
         float bandwidth = (engagementRange - meleeRange) * 0.5f;
         // Gaussian-style falloff: peaks when distance == midpoint.
         float rangeFactor = Mathf.Clamp01(1f - Mathf.Abs(distance - midpoint) / bandwidth);
@@ -534,7 +534,7 @@ public class DuelistBrain : EnemyBase
         // Origin is firePoint.position — the exact world point the projectile spawns
         // from — so the raycast and spawn share the same origin with no mismatch.
         Vector3 dirToPlayer = GetDirectionToPlayer();
-        float distToPlayer  = GetDistanceToPlayer();
+        float distToPlayer = GetDistanceToPlayer();
 
         if (Physics.Raycast(firePoint.position, dirToPlayer, distToPlayer, coverMask,
                             QueryTriggerInteraction.Ignore))
@@ -608,15 +608,15 @@ public class DuelistBrain : EnemyBase
         // Default values (retreatDistance=15, retreatSteps=5) try distances:
         //   15 m → 12 m → 9 m → 6 m → 3 m → 0 m (Duelist's own position).
         const int retreatSteps = 5;
-        float stepSize    = retreatDistance / retreatSteps;
-        float snapRadius  = stepSize;   // Per-candidate NavMesh snap radius.
+        float stepSize = retreatDistance / retreatSteps;
+        float snapRadius = stepSize;   // Per-candidate NavMesh snap radius.
 
-        Vector3 retreatPos   = transform.position;  // Worst-case: hold position.
-        bool    foundRetreat = false;
+        Vector3 retreatPos = transform.position;  // Worst-case: hold position.
+        bool foundRetreat = false;
 
         for (int step = 0; step <= retreatSteps; step++)
         {
-            float   tryDist   = retreatDistance - step * stepSize;
+            float tryDist = retreatDistance - step * stepSize;
             Vector3 candidate = transform.position + fleeDir * tryDist;
 
             if (UnityEngine.AI.NavMesh.SamplePosition(
@@ -625,7 +625,7 @@ public class DuelistBrain : EnemyBase
                     snapRadius,
                     UnityEngine.AI.NavMesh.AllAreas))
             {
-                retreatPos   = navHit.position;
+                retreatPos = navHit.position;
                 foundRetreat = true;
 
                 // Only log when we had to reduce the distance — keeps the console
@@ -728,14 +728,14 @@ public class DuelistBrain : EnemyBase
     {
         float idealDist = (meleeRange + engagementRange) * 0.5f;
         float bestScore = float.MaxValue;
-        bool  found     = false;
+        bool found = false;
         chosen = transform.position;
 
         for (int i = 0; i < repositionSamples; i++)
         {
             // Sample a direction uniformly around a full circle.
-            float   angle     = (360f / repositionSamples) * i + Random.Range(-15f, 15f);
-            Vector3 dir       = Quaternion.Euler(0f, angle, 0f) * transform.forward;
+            float angle = (360f / repositionSamples) * i + Random.Range(-15f, 15f);
+            Vector3 dir = Quaternion.Euler(0f, angle, 0f) * transform.forward;
             Vector3 candidate = transform.position + dir * repositionRadius;
 
             // Snap the candidate to the nearest NavMesh point (max 2 unit offset).
@@ -751,13 +751,13 @@ public class DuelistBrain : EnemyBase
             if (Player == null) break;
 
             float distFromPlayer = Vector3.Distance(navHit.position, Player.position);
-            float score          = Mathf.Abs(distFromPlayer - idealDist);
+            float score = Mathf.Abs(distFromPlayer - idealDist);
 
             if (score < bestScore)
             {
                 bestScore = score;
-                chosen    = navHit.position;
-                found     = true;
+                chosen = navHit.position;
+                found = true;
             }
         }
 
