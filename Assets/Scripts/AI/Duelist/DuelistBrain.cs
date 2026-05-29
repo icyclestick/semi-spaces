@@ -61,10 +61,10 @@ public class DuelistBrain : EnemyBase
 
     [Header("Utility Weights")]
     [Tooltip("Base utility multiplier for the Attack action. Higher = more aggressive.")]
-    [SerializeField] private float attackWeight = 1.0f;
+    [SerializeField] private float attackWeight = 1.5f;
 
     [Tooltip("Base utility multiplier for the Retreat action. Higher = more survivable.")]
-    [SerializeField] private float retreatWeight = 1.5f;
+    [SerializeField] private float retreatWeight = 0.8f;
 
     [Tooltip("Base utility multiplier for the Reposition action. Higher = more tactical.")]
     [SerializeField] private float repositionWeight = 1.2f;
@@ -149,7 +149,7 @@ public class DuelistBrain : EnemyBase
              "before the MEU system is allowed to switch to a different one. " +
              "Prevents rapid yo-yo thrashing between states. " +
              "Subsumption override (critical HP) always bypasses this timer.")]
-    [SerializeField, Min(0.1f)] private float decisionHoldTime = 0.6f;
+    [SerializeField, Min(0.1f)] private float decisionHoldTime = 1.5f;
 
     // ──────────────────────────────────────────────
     //  Runtime State
@@ -272,18 +272,7 @@ public class DuelistBrain : EnemyBase
             return;
         }
 
-        // ── STEP 1: SUBSUMPTION OVERRIDE (priority layer) ───────────────────
-        // Hard-override the utility system when health is critical.
-        // This is an instinctive self-preservation response that bypasses
-        // BOTH the utility scores AND the hysteresis timer — the AI must
-        // always be able to flee immediately when its life is in danger.
-        if (CurrentHealth < MaxHealth * criticalHealthFraction)
-        {
-            ExecuteRetreat(forced: true);
-            return;
-        }
-
-        // ── STEP 2: MEU SCORING (decision layer) ────────────────────────────
+        // ── STEP 1: MEU SCORING (decision layer) ────────────────────────────
         float distance   = GetDistanceToPlayer();
         float healthFrac = MaxHealth > 0 ? (float)CurrentHealth / MaxHealth : 1f;
 
@@ -291,7 +280,7 @@ public class DuelistBrain : EnemyBase
         float retreatScore    = ScoreRetreat(distance, healthFrac);
         float repositionScore = ScoreReposition(distance, healthFrac);
 
-        // ── STEP 3: SELECT — with hysteresis guard ───────────────────────────
+        // ── STEP 2: SELECT — with hysteresis guard ───────────────────────────
         // Compute the best action the scores would select this frame.
         DuelistAction candidate = SelectBestAction(attackScore, retreatScore, repositionScore);
 
@@ -320,7 +309,7 @@ public class DuelistBrain : EnemyBase
             chosen = lastAction;
         }
 
-        // ── STEP 4: EXECUTE ──────────────────────────────────────────────────
+        // ── STEP 3: EXECUTE ──────────────────────────────────────────────────
         switch (chosen)
         {
             case DuelistAction.Attack:
@@ -374,8 +363,10 @@ public class DuelistBrain : EnemyBase
         // so Attack scores ~0.09 at the 12m standoff, making it selectable from there.
         float proximityFactor = Mathf.Clamp01(1f - (distance / (engagementRange * 1.1f)));
 
-        // Boldness: directly proportional to remaining health.
-        float boldnessFactor = healthFrac;
+        // Boldness: U-shaped curve. High at 100% (confident), drops at 50% (cautious),
+        // and spikes massively at critical health (berserker last stand).
+        float desperation = 1f - healthFrac;
+        float boldnessFactor = healthFrac + (desperation * desperation * desperation);
 
         return attackWeight * proximityFactor * boldnessFactor;
     }
