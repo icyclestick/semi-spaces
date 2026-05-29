@@ -358,21 +358,21 @@ public class DuelistBrain : EnemyBase
     ///   - Health increases (healthy Duelists are bold).
     ///
     /// Formula:
-    ///   proximityFactor = 1 - saturate(distance / engagementRange)
-    ///       → 1.0 when right on top of the player, 0.0 at engagementRange.
-    ///       Uses engagementRange (not meleeRange) because ExecuteAttack holds
-    ///       standoff at engagementRange — meleeRange would return 0 at the
-    ///       Duelist's actual firing position, making Attack unselectable.
+    ///   proximityFactor = 1 - saturate(distance / (engagementRange * 1.1))
+    ///       → peaks at 1.0 at distance=0, reaches 0.0 at ~13.2m (with default 12m range).
+    ///       The 1.1 multiplier shifts the zero-crossing slightly past engagementRange
+    ///       so Attack retains a baseline score (~0.09) at the exact standoff distance
+    ///       where ExecuteAttack holds position. Without this, Attack scores exactly
+    ///       0.0 at engagementRange and can never be selected from the firing position.
     ///   boldnessFactor  = healthFrac (healthy = bold)
     ///   score           = weight * proximityFactor * boldnessFactor
     /// </summary>
     private float ScoreAttack(float distance, float healthFrac)
     {
-        // Proximity utility: linear falloff from 1 to 0 over engagementRange.
-        // engagementRange is used (not meleeRange) because ExecuteAttack holds
-        // standoff at engagementRange; using meleeRange would yield 0.0 at the
-        // Duelist's intended firing position, preventing Attack from being selected.
-        float proximityFactor = Mathf.Clamp01(1f - (distance / engagementRange));
+        // Proximity utility: linear falloff reaching zero slightly past engagementRange.
+        // The 1.1f denominator multiplier shifts the zero-crossing to ~13.2m (default)
+        // so Attack scores ~0.09 at the 12m standoff, making it selectable from there.
+        float proximityFactor = Mathf.Clamp01(1f - (distance / (engagementRange * 1.1f)));
 
         // Boldness: directly proportional to remaining health.
         float boldnessFactor = healthFrac;
@@ -384,24 +384,33 @@ public class DuelistBrain : EnemyBase
     /// Scores the Retreat action.
     ///
     /// Retreat utility rises as:
-    ///   - Health decreases (wounded Duelists disengage).
-    ///   - Distance decreases (player is dangerously close).
+    ///   - Health decreases AND the player is close (wounded and threatened).
+    ///   - Distance decreases (player is dangerously inside melee range).
     ///
     /// Formula:
-    ///   woundedFactor   = 1 - healthFrac (inverse health)
+    ///   woundedFactor   = (1 - healthFrac) * proximityScale
+    ///       proximityScale = Clamp01(engagementRange / distance - 0.5)
+    ///       → decays to 0 as distance grows past engagementRange*2, preventing
+    ///         a wounded Duelist at long range from retreating indefinitely instead
+    ///         of re-engaging. At distance=engagementRange, scale=0.5; at distance
+    ///         = engagementRange/2, scale=1.0 (full wound penalty).
     ///   pressureFactor  = 1 - saturate(distance / meleeRange)
-    ///       → spiked when the player is inside melee range.
+    ///       → spiked when the player is inside melee range (physical threat).
     ///   score           = weight * (woundedFactor + pressureFactor * 0.5)
     ///
-    /// The 0.5 coefficient on pressureFactor means woundedness dominates
-    /// the retreat decision; proximity only nudges it.
+    /// The 0.5 coefficient on pressureFactor keeps physical pressure as a nudge;
+    /// woundedFactor (now proximity-scaled) dominates close-range retreat decisions.
     /// </summary>
     private float ScoreRetreat(float distance, float healthFrac)
     {
-        // Inverse health: higher score the lower the HP.
-        float woundedFactor = 1f - healthFrac;
+        // Wounded-and-close factor: retreat pressure scales with proximity so a
+        // wounded Duelist at long range re-engages rather than fleeing forever.
+        // proximityScale reaches 1.0 at half-engagement distance, 0.5 at engagement
+        // range, and falls to 0 at twice engagement range.
+        float proximityScale = Mathf.Clamp01(engagementRange / Mathf.Max(distance, 0.1f) - 0.5f);
+        float woundedFactor  = (1f - healthFrac) * proximityScale;
 
-        // Pressure from player proximity inside melee range.
+        // Pressure from player proximity inside melee range (physical threat spike).
         float pressureFactor = Mathf.Clamp01(1f - (distance / meleeRange));
 
         return retreatWeight * (woundedFactor + pressureFactor * 0.5f);
@@ -664,6 +673,18 @@ public class DuelistBrain : EnemyBase
             SetSpeed(GetBaseSpeed() * retreatSpeedMultiplier);
             retreatSpeedApplied = true;
         }
+
+        // If we have already reached the current retreat destination, force a
+        // fresh destination next frame by clearing the target. MoveToTarget will
+        // still be called below (with the same retreatPos) but the NavMeshAgent
+        // will immediately re-issue a path when retreatPos is updated on the
+        // next call. Without this, a Duelist that reaches its flee point while
+        // still in critical-HP subsumption simply stands still.
+        if (HasReachedDestination())
+        {
+            retreatSpeedApplied = false;    // Allow speed to be re-applied on next flee step.
+        }
+
         MoveToTarget(retreatPos);
 
         if (forced)
