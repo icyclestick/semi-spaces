@@ -18,6 +18,7 @@ GameObject:
   - component: {fileID: -7597214243000715184}
   - component: {fileID: -3608583252158140779}
   - component: {fileID: -8547207268520789500}
+  - component: {fileID: -6956187630217456089}
   m_Layer: 0
   m_Name: Swarm_Drone
   m_TagString: Untagged
@@ -35,7 +36,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0.30902, y: 0.38886, z: -1.03931}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.6, y: 0.6, z: 0.6}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -130,11 +131,11 @@ NavMeshAgent:
   m_Enabled: 1
   m_AgentTypeID: 0
   m_Radius: 0.5
-  m_Speed: 3.5
-  m_Acceleration: 8
+  m_Speed: 5
+  m_Acceleration: 10
   avoidancePriority: 50
   m_AngularSpeed: 120
-  m_StoppingDistance: 0
+  m_StoppingDistance: 0.5
   m_AutoTraverseOffMeshLink: 1
   m_AutoBraking: 1
   m_AutoRepath: 1
@@ -154,7 +155,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3d667e302d2f3c853b25c69a32b3e815, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Health
-  maxHealth: 100
+  maxHealth: 30
   onDeathEvent:
     m_PersistentCalls:
       m_Calls: []
@@ -183,6 +184,15 @@ MonoBehaviour:
   acceleration: 8
   stoppingDistance: 1
   player: {fileID: 0}
+  separationWeight: 1.5
+  alignmentWeight: 1
+  cohesionWeight: 1
+  pursuitWeight: 2
+  neighborRadius: 8
+  separationRadius: 3
+  maxSteerForce: 10
+  steerTargetDistance: 5
+  attackRange: 2.5
 --- !u!114 &-7597214243000715184
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -251,3 +261,17 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &-6956187630217456089
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5974104903341265884}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b584726adf152c9bab060cc29a1dad7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SwarmAttack
+  attackDamage: 5
+  attackCooldown: 1

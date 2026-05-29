@@ -113,7 +113,7 @@ public class ContactDamage : MonoBehaviour
     /// </summary>
     private void OnTriggerExit(Collider other)
     {
-        lastHitTimes.Remove(other.gameObject.GetInstanceID());
+        lastHitTimes.Remove(other.gameObject.GetEntityId());
     }
 
     /// <summary>
@@ -121,7 +121,7 @@ public class ContactDamage : MonoBehaviour
     /// </summary>
     private void OnCollisionExit(Collision collision)
     {
-        lastHitTimes.Remove(collision.gameObject.GetInstanceID());
+        lastHitTimes.Remove(collision.gameObject.GetEntityId());
     }
 
     // ──────────────────────────────────────────────
@@ -146,7 +146,7 @@ public class ContactDamage : MonoBehaviour
 
         // --- Cooldown check ---
         // Use the target's instanceID as a unique, allocation-free key.
-        int targetId = target.GetInstanceID();
+        int targetId = target.GetEntityId();
         float currentTime = Time.time;
 
         if (lastHitTimes.TryGetValue(targetId, out float lastHit))
