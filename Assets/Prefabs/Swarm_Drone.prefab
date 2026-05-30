@@ -132,9 +132,9 @@ NavMeshAgent:
   m_AgentTypeID: 0
   m_Radius: 0.5
   m_Speed: 5
-  m_Acceleration: 10
+  m_Acceleration: 20
   avoidancePriority: 50
-  m_AngularSpeed: 120
+  m_AngularSpeed: 500
   m_StoppingDistance: 0.5
   m_AutoTraverseOffMeshLink: 1
   m_AutoBraking: 1
@@ -178,7 +178,7 @@ MonoBehaviour:
   fieldOfViewAngle: 90
   obstacleMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 1
   perceptionTickRate: 0.15
   defaultSpeed: 3.5
   acceleration: 8
@@ -191,7 +191,7 @@ MonoBehaviour:
   neighborRadius: 8
   separationRadius: 3
   maxSteerForce: 10
-  steerTargetDistance: 5
+  steerTargetDistance: 1
   attackRange: 2.5
 --- !u!114 &-7597214243000715184
 MonoBehaviour:

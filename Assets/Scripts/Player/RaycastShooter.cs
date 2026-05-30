@@ -60,7 +60,7 @@ public class RaycastShooter : MonoBehaviour
     private int maxAmmo = 30;
 
     [SerializeField, Tooltip("Time in seconds it takes to complete a reload.")]
-    private float reloadTime = 1.5f;
+    public float reloadTime = 1.5f;
 
     // ──────────────────────────────────────────────
     //  References
@@ -110,6 +110,17 @@ public class RaycastShooter : MonoBehaviour
     private float trailFlashDuration = 0.05f;
 
     // ──────────────────────────────────────────────
+    //  Audio
+    // ──────────────────────────────────────────────
+
+    [Header("Audio")]
+    [SerializeField, Tooltip("Sound played when the weapon fires.")]
+    public AudioClip fireClip;
+
+    [SerializeField, Tooltip("How much the pitch randomly varies per shot. 0 = no variation, 0.1 = ±10%.")]
+    public float pitchVariance = 0.05f;
+
+    // ──────────────────────────────────────────────
     //  Hit Sparks (Object Pooled)
     // ──────────────────────────────────────────────
     //
@@ -153,14 +164,17 @@ public class RaycastShooter : MonoBehaviour
     //
 
     [Header("Events")]
-    [SerializeField, Tooltip("Fired whenever the ammo count changes. Passes (currentAmmo, maxAmmo).")]
-    private UnityEvent<int, int> onAmmoChanged;
+    [Tooltip("Fired whenever the ammo count changes. Passes (currentAmmo, maxAmmo).")]
+    public UnityEvent<int, int> onAmmoChanged;
 
-    [SerializeField, Tooltip("Fired when a reload begins. Use to trigger HUD animations or sound.")]
-    private UnityEvent onReloadStart;
+    [Tooltip("Fired when a reload begins. Use to trigger HUD animations or sound.")]
+    public UnityEvent onReloadStart;
 
-    [SerializeField, Tooltip("Fired when a reload completes.")]
-    private UnityEvent onReloadFinish;
+    [Tooltip("Fired when a reload completes.")]
+    public UnityEvent onReloadFinish;
+
+    [Tooltip("Fired every time the weapon fires (before pellets). Use for recoil / muzzle flash.")]
+    public UnityEvent onFire;
 
     // ──────────────────────────────────────────────
     //  Debug
@@ -233,6 +247,12 @@ public class RaycastShooter : MonoBehaviour
         // Start with a full magazine.
         currentAmmo = maxAmmo;
 
+        // Ensure UnityEvents are initialized (they can be null from old serialization).
+        onReloadStart ??= new UnityEngine.Events.UnityEvent();
+        onReloadFinish ??= new UnityEngine.Events.UnityEvent();
+        onFire ??= new UnityEngine.Events.UnityEvent();
+        onAmmoChanged ??= new UnityEngine.Events.UnityEvent<int, int>();
+
         // Build input actions inline — no .inputactions asset required.
         shootAction = new InputAction("Shoot", InputActionType.Button);
         shootAction.AddBinding("<Mouse>/leftButton");
@@ -299,6 +319,7 @@ public class RaycastShooter : MonoBehaviour
         {
             gunBarrel = shootOrigin;
         }
+
     }
 
     private void OnEnable()
@@ -398,6 +419,9 @@ public class RaycastShooter : MonoBehaviour
 
         // Notify any subscribed HUD elements.
         onAmmoChanged?.Invoke(currentAmmo, maxAmmo);
+
+        // Notify recoil / muzzle-flash subscribers.
+        onFire?.Invoke();
 
         // --- Fire each pellet ---
         Vector3 origin      = shootOrigin.position;

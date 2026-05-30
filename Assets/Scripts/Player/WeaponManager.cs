@@ -44,8 +44,8 @@ public class WeaponManager : MonoBehaviour
     //
 
     [Header("Events")]
-    [SerializeField, Tooltip("Fired when the active weapon changes. Passes (newIndex, totalWeapons).")]
-    private UnityEvent<int, int> onWeaponSwitched;
+    [Tooltip("Fired when the active weapon changes. Passes (newIndex, totalWeapons).")]
+    public UnityEvent<int, int> onWeaponSwitched;
 
     // ──────────────────────────────────────────────
     //  Input Actions
