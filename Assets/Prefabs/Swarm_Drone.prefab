@@ -178,7 +178,7 @@ MonoBehaviour:
   fieldOfViewAngle: 90
   obstacleMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 1
   perceptionTickRate: 0.15
   defaultSpeed: 3.5
   acceleration: 8

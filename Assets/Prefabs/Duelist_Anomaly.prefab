@@ -175,7 +175,7 @@ MonoBehaviour:
   fieldOfViewAngle: 180
   obstacleMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 1
   perceptionTickRate: 0.15
   defaultSpeed: 7
   acceleration: 14
@@ -195,7 +195,7 @@ MonoBehaviour:
   attackRadius: 2.5
   attackTargetMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 8
   retreatDistance: 15
   retreatSpeedMultiplier: 2
   repositionSamples: 6
