@@ -37,7 +37,7 @@ public class HoverMotion : MonoBehaviour
     private void Update()
     {
         // Safety check if the agent dies or gets disabled
-        if (!agent.enabled) return;
+        if (agent == null || !agent.enabled) return;
 
         // Calculate the sine wave bobbing effect
         float bobOffset = Mathf.Sin((Time.time + timeOffset) * bobSpeed) * bobAmplitude;
